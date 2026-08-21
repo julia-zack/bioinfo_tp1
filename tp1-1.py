@@ -19,9 +19,16 @@
 # Ácido aspártico (Asp, D)
 # Ácido glutámico (Glu, E)
 
+import os
 import random
+import time
 import numpy as np
 import matplotlib.pyplot as plt
+
+from Bio.Seq import Seq
+from Bio import Entrez, SeqIO
+
+Entrez.email = 'arielzingman@gmail.com'
 
 ###############################################################################
 # Constants
@@ -62,9 +69,17 @@ def generate_weighted_sequence(length, aa_weights):
 def generate_random_aa_sequence(length):
     return generate_weighted_sequence(length, [1 / len(aa)] * len(aa))
 
-def generate_random_nt_sequence(length):
+def gc_fraction(nt_seq):
+    """Fraction of G and C, ignoring ambiguity codes (N, R, Y, ...)."""
+    counts = {base: str(nt_seq).upper().count(base) for base in 'ACGT'}
+    total = sum(counts.values())
+    return (counts['G'] + counts['C']) / total if total else 0.0
+
+def generate_random_nt_sequence(length, gc=0.5):
+    """Random sequence with the requested GC content (gc=0.5 => uniform)."""
     nucleotides = ['A', 'T', 'C', 'G']
-    return ''.join(random.choice(nucleotides) for _ in range(length))
+    weights = [(1 - gc) / 2, (1 - gc) / 2, gc / 2, gc / 2]
+    return ''.join(random.choices(nucleotides, weights=weights, k=length))
 
 def calculate_aa_frequencies(sequence):
     counts = {}
@@ -122,13 +137,207 @@ def plot_frequencies(frequencies, title, categories=None, expected=None):
     fig.tight_layout()
     plt.show()   # or fig.savefig('freqs.png', dpi=150) for the report
 
-# def get_six_aa_seq_from_nt_seq(nt_seq):
-#     sequences = []
-#     frames =
-#     for frame in range(3):
-#         aa_seq = get_aa_seq_from_nt_seq(nt_seq[frame:])
-#         sequences.append(aa_seq)
-#     return sequences
+def plot_frequencies_comparison(series, title, categories=None):
+    """Grouped bar chart comparing several frequency dicts.
+
+    series: dict of {label: frequencies}, one group of bars per category.
+    """
+    categories = categories or aa
+    colors = ['#4a6fa5', '#d1852f']
+    bar_width = 0.8 / len(series)
+
+    fig, ax = plt.subplots(figsize=(11, 4.5))
+    for i, (label, frequencies) in enumerate(series.items()):
+        values = [frequencies.get(c, 0) for c in categories]
+        offsets = [pos - 0.4 + bar_width * (i + 0.5) for pos in range(len(categories))]
+        ax.bar(offsets, values, width=bar_width * 0.9,
+               color=colors[i % len(colors)], label=label)
+
+    ax.set_xticks(range(len(categories)))
+    ax.set_xticklabels(categories)
+    ax.set_title(title)
+    ax.set_xlabel('Amino acid')
+    ax.set_ylabel('Relative frequency')
+    ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+    ax.legend(frameon=False)
+
+    fig.tight_layout()
+    plt.show()
+
+
+def get_six_frames_from_nt_seq(nt_seq):
+    """Translate the sequence in all six reading frames.
+
+    Keys are '+1'..'+3' for the forward strand and '-1'..'-3' for the reverse
+    complement; both strands are read 5' -> 3'. Each frame drops the trailing
+    1-2 nucleotides that do not complete a codon.
+    """
+    sequences = {}
+    forward = Seq(str(nt_seq))
+    strands = [('+', forward), ('-', forward.reverse_complement())]
+
+    for sign, strand in strands:
+        for frame in range(3):
+            shifted = strand[frame:]
+            # Trim explicitly, otherwise translate() warns about a partial codon.
+            trimmed = shifted[:len(shifted) - len(shifted) % 3]
+            sequences[f'{sign}{frame + 1}'] = str(trimmed.translate())
+
+    return sequences
+
+
+def get_orf_sizes(seq):
+    """Return a list of the sizes of all ORFs in the sequence.
+
+    An ORF is defined as a sequence that starts with a start codon (M) and ends
+    with a stop codon (*). The size is the number of amino acids, including the
+    start and stop codons.
+    """
+    orf_sizes = []
+    current_orf_size = 0
+    in_orf = False
+
+    for aa in seq:
+        if aa == 'M' and not in_orf:
+            in_orf = True
+            current_orf_size = 1  # Start counting from the start codon
+        elif aa == '*' and in_orf:
+            current_orf_size += 1  # Count the stop codon
+            orf_sizes.append(current_orf_size)
+            in_orf = False
+            current_orf_size = 0
+        elif in_orf:
+            current_orf_size += 1
+
+    return orf_sizes
+
+def plot_orf_sizes(orf_sizes, title):
+    """Strip plot con los tamaños de los ORFs (en aminoácidos) por frame.
+
+    orf_sizes: dict {frame_label: [sizes]}, como el que arma ex_2b() a partir
+    de get_orf_sizes() aplicado a cada frame de get_six_frames_from_nt_seq().
+    """
+    frame_labels = list(orf_sizes.keys())
+    # RNG separado para el jitter, así no toca el estado del módulo random
+    # que se usa para generar las secuencias.
+    jitter_rng = random.Random()
+
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+
+    for i, label in enumerate(frame_labels):
+        sizes = orf_sizes[label]
+        if not sizes:
+            continue
+        xs = [i + jitter_rng.uniform(-0.15, 0.15) for _ in sizes]
+        ax.scatter(xs, sizes, color='#4a6fa5', alpha=0.7,
+                   edgecolors='white', linewidths=0.5, zorder=3)
+
+    ax.set_xticks(range(len(frame_labels)))
+    ax.set_xticklabels(frame_labels)
+    ax.set_title(title)
+    ax.set_xlabel('Reading frame')
+    ax.set_ylabel('ORF size (amino acids, incl. start/stop)')
+    ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+
+    fig.tight_layout()
+    plt.show()
+
+###############################################################################
+# NCBI: sampling real sequences
+###############################################################################
+
+NCBI_CACHE = "ncbi_sample.fasta"
+
+# A random sample of this query, not of all GenBank: the query is part of the method.
+NCBI_QUERY = '"Homo sapiens"[Organism] AND biomol_mrna[PROP] AND 500:5000[SLEN]'
+
+
+def fetch_random_records(n=100, query=NCBI_QUERY, cache_path=NCBI_CACHE, seed=None):
+    """Download n sequences sampled at random from the results of a query.
+
+    Writes a multi-FASTA to cache_path and reuses it on later runs, so the
+    requests to NCBI are not repeated.
+    """
+    if os.path.exists(cache_path):
+        return list(SeqIO.parse(cache_path, "fasta"))
+
+    # esearch returns at most 10000 ids per request; that is the pool the
+    # sample is drawn from.
+    handle = Entrez.esearch(db="nucleotide", term=query, retmax=10000)
+    id_pool = Entrez.read(handle)["IdList"]
+    handle.close()
+    if len(id_pool) < n:
+        raise ValueError(f"The query returned {len(id_pool)} ids, fewer than the {n} requested.")
+
+    sampled_ids = random.Random(seed).sample(id_pool, n)
+
+    # In batches, respecting the 3 requests per second limit without an API key.
+    records = []
+    batch_size = 20
+    for start in range(0, len(sampled_ids), batch_size):
+        batch = sampled_ids[start:start + batch_size]
+        handle = Entrez.efetch(db="nucleotide", id=",".join(batch),
+                               rettype="fasta", retmode="text")
+        records.extend(SeqIO.parse(handle, "fasta"))
+        handle.close()
+        print(f"  downloaded {len(records)}/{len(sampled_ids)}")
+        time.sleep(0.4)
+
+    SeqIO.write(records, cache_path, "fasta")
+    return records
+
+
+def collect_orf_sizes(nt_seq):
+    """Every ORF from the six reading frames, in a single list."""
+    frames = get_six_frames_from_nt_seq(nt_seq)
+    return [size for aa_seq in frames.values() for size in get_orf_sizes(aa_seq)]
+
+
+def plot_orf_size_comparison(real_sizes, control_sizes, title):
+    """Compare two ORF size distributions.
+
+    Left: density, to show the shape. Right: P(size >= k) on a log scale,
+    where a geometric distribution appears as a straight line.
+    """
+    colors = {'real': '#4a6fa5', 'control': '#d1852f'}
+    fig, (ax_hist, ax_tail) = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    bins = range(0, max(max(real_sizes), max(control_sizes)) + 10, 5)
+    for label, sizes in (('real', real_sizes), ('control', control_sizes)):
+        ax_hist.hist(sizes, bins=bins, density=True, histtype='step',
+                     linewidth=2, color=colors[label], label=label)
+
+    ax_hist.set_title('Density', fontsize=10)
+    ax_hist.set_xlabel('ORF size (amino acids)')
+    ax_hist.set_ylabel('Density')
+    ax_hist.legend(frameon=False)
+
+    for label, sizes in (('real', real_sizes), ('control', control_sizes)):
+        ordered = sorted(sizes)
+        survival = [1 - i / len(ordered) for i in range(len(ordered))]
+        ax_tail.plot(ordered, survival, linewidth=2, color=colors[label], label=label)
+
+    ax_tail.set_yscale('log')
+    ax_tail.set_title('Tail: P(size >= k)', fontsize=10)
+    ax_tail.set_xlabel('ORF size (amino acids)')
+    ax_tail.set_ylabel('P(size >= k)')
+    ax_tail.legend(frameon=False)
+
+    for ax in (ax_hist, ax_tail):
+        ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
+        ax.set_axisbelow(True)
+        for side in ('top', 'right'):
+            ax.spines[side].set_visible(False)
+
+    fig.suptitle(title)
+    fig.tight_layout()
+    plt.show()
 
 
 ###############################################################################
@@ -237,13 +446,99 @@ representa a cada aminoácido es diferente.
 """)
 
 
+def ex_2a():
+    """Exercise 2a."""
+
+    nt_input_length = int(input("Enter the length of the nucleotide sequence: "))
+    random_nt_sequence = generate_random_nt_sequence(nt_input_length)
+
+    nt_seq = Seq(random_nt_sequence)
+    aa_seq = nt_seq.translate()
+    print(aa_seq)
+
+    aa_seq_frequencies = calculate_aa_frequencies(str(aa_seq))
+    aa_seq_frequencies = dict(sorted(aa_seq_frequencies.items()))
+    print(aa_seq_frequencies)
+
+    rev_comp = nt_seq.reverse_complement()
+    aa_seq_rev_comp = rev_comp.translate()
+    print(aa_seq_rev_comp)
+    aa_seq_rev_comp_frequencies = calculate_aa_frequencies(str(aa_seq_rev_comp))
+    aa_seq_rev_comp_frequencies = dict(sorted(aa_seq_rev_comp_frequencies.items()))
+    print(aa_seq_rev_comp_frequencies)
+
+    plot_frequencies_comparison(
+        {'Forward strand': aa_seq_frequencies,
+         'Reverse complement': aa_seq_rev_comp_frequencies},
+        f'Amino acid frequencies: forward strand vs reverse complement (n = {nt_input_length} nt)',
+        categories=aa + ['*'])
+
+
+def ex_2b():
+    """Exercise 2b."""
+    nt_input_length = int(input("Enter the length of the nucleotide sequence: "))
+    random_nt_sequence = generate_random_nt_sequence(nt_input_length)
+
+    nt_seq = Seq(random_nt_sequence)
+    frames = get_six_frames_from_nt_seq(nt_seq)
+
+    orf_sizes = {}
+    for label, aa_seq in frames.items():
+        orf_sizes[label] = get_orf_sizes(aa_seq)
+
+    for label, sizes in orf_sizes.items():
+        print(f'{label}: {sizes}')
+
+    plot_orf_sizes(orf_sizes,
+                f'ORF sizes by reading frame (n = {nt_input_length} nt)')
+
+def ex_3b():
+
+    handle = Entrez.efetch(db="nucleotide", id="AY851612", rettype="gb", retmode="text")
+    record = SeqIO.read(handle, "genbank")
+    handle.close()
+    print(record.id, len(record.seq))
+    print(record.description)
+    print(record.seq)
+
+def ex_3c():
+    """100 real NCBI sequences against an equivalent random control."""
+    records = fetch_random_records(n=100, seed=0)
+    print(f"{len(records)} sequences, mean length "
+          f"{sum(len(r.seq) for r in records) / len(records):.0f} nt")
+
+    real_sizes = []
+    control_sizes = []
+    for record in records:
+        real_sizes.extend(collect_orf_sizes(record.seq))
+        # Control: same length and same %GC as the real sequence, but random.
+        control = generate_random_nt_sequence(len(record.seq), gc=gc_fraction(record.seq))
+        control_sizes.extend(collect_orf_sizes(control))
+
+    for label, sizes in (("real", real_sizes), ("control", control_sizes)):
+        ordered = sorted(sizes)
+        print(f"{label:>8}: {len(sizes):5d} ORFs  "
+              f"mean {sum(sizes) / len(sizes):6.1f}  "
+              f"median {ordered[len(ordered) // 2]:4d}  "
+              f"max {max(sizes):5d}")
+
+    plot_orf_size_comparison(
+        real_sizes, control_sizes,
+        f'ORF sizes: {len(records)} NCBI sequences vs random control (same length and %GC)')
+
+
 def main():
     # ex_1a_i()
     # ex_1a_ii()
     # ex_1b_i()
     # ex_1b_ii()
-    ex_1b_iii()
+    # ex_1b_iii()
 
+    # ex_2a()
+    # ex_2b()
+
+    # ex_3b()
+    ex_3c()
 
 if __name__ == "__main__":
     main()

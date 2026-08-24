@@ -136,8 +136,15 @@ THRESHOLD = 0.01   # "stabilised": distance below this value
 
 
 def find_N(grid, ds):
-    """First size in the grid whose distance falls below the threshold."""
-    for R, d in zip(grid, ds):
-        if d < THRESHOLD:
-            return R
-    return grid[-1]   # did not stabilise within the range tested
+    """Sample size where the distance crosses below the threshold."""
+    if ds[0] < THRESHOLD:
+        return grid[0]                  # already below the threshold at the first point
+    for i in range(1, len(grid)):
+        if ds[i] < THRESHOLD:
+            # grid[i-1] is above the threshold and grid[i] is below it:
+            # find the x (on a log scale) where the line between them hits the threshold
+            x0, x1 = np.log10(grid[i - 1]), np.log10(grid[i])
+            y0, y1 = ds[i - 1], ds[i]
+            frac = (y0 - THRESHOLD) / (y0 - y1)   # fraction of the interval, 0..1
+            return int(round(10 ** (x0 + frac * (x1 - x0))))
+    return grid[-1]                      # did not stabilise within the range tested

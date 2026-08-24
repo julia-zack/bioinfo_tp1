@@ -46,6 +46,23 @@ REAL_ORGANISMS = {
 }
 COLOURS = {"Random": "#c1666b", "E. coli": "#4a6fa5", "Human": "#6a9955"}
 
+def run():
+    real_seqs = download_seqs()
+    data_length = calculate_data_length(real_seqs)
+    sources = build_sources(real_seqs, data_length)
+
+    # Step 1: when does the aa distribution stabilise
+    curves, N_by_source, final_distributions = analyze_convergence(sources)
+    print_N_by_source(N_by_source)
+    N = representative_N(N_by_source)
+    print(f"\nN representativo (suficiente para las tres fuentes): {N}")
+    plot_convergence(curves, N)
+
+    # Step 2: compare the distributions at << N, ~ N, >> N
+    plot_regimes(real_seqs, final_distributions, N, data_length)
+
+    plt.show()
+    print("\nGuardados: aa_stabilized.png y aa_distribution.png")
 
 def download_seqs():
     """Load (or download and cache) the real sequences for each organism."""
@@ -98,16 +115,10 @@ def print_N_by_source(N_by_source):
         print(f"  {name}: N = {N}")
 
 
-def representative_N(curves):
-    """N where the AVERAGE of every source's curve stabilises. The three
-    converge together, so a single N summarises "when it is enough for all of
-    them" (and avoids the noise of a per-source N jumping between runs)."""
-    all_curves = []
-    for grid, ds in curves.values():
-        all_curves.append(ds)
-    mean_curve = list(np.mean(all_curves, axis=0))
-    common_grid = curves["Random"][0]   # every source shares the same grid
-    return find_N(common_grid, mean_curve)
+def representative_N(N_by_source):
+    """N where ALL sources have already stabilised: the largest per-source N
+    (the slowest one)."""
+    return max(N_by_source.values())
 
 
 def mark_N_on_xaxis(ax, N):
@@ -150,7 +161,7 @@ def plot_convergence(curves, N):
     ax.set_xscale('log')
     ax.set_xlabel('Residues analysed')
     ax.set_ylabel('Distance to the final distribution')
-    ax.set_title('4a - Step 1: when does the aa distribution stabilise?')
+    ax.set_title('AA distribution stabilization')
     ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
     ax.set_axisbelow(True)
     for side in ('top', 'right'):
@@ -160,7 +171,7 @@ def plot_convergence(curves, N):
     mark_N_on_xaxis(ax, N)
 
     fig.tight_layout()
-    fig.savefig(os.path.join(HERE, '4a_convergencia.png'), dpi=150)
+    fig.savefig(os.path.join(HERE, 'aa_stabilized.png'), dpi=150)
 
 
 def choose_regimes(N, data_length):
@@ -214,26 +225,6 @@ def plot_regimes(real_seqs, final_distributions, N, data_length):
     axes[0].legend(frameon=False, ncol=3)
     axes[-1].set_xticks(base_positions)
     axes[-1].set_xticklabels(order)
-    axes[-1].set_xlabel('Amino acid (ordered by frequency in E. coli)')
-    fig.suptitle('4a - Step 2: aa distribution at different sample sizes')
+    axes[-1].set_xlabel('AA')
     fig.tight_layout()
-    fig.savefig(os.path.join(HERE, '4a_regimenes.png'), dpi=150)
-
-
-def run():
-    real_seqs = download_seqs()
-    data_length = calculate_data_length(real_seqs)
-    sources = build_sources(real_seqs, data_length)
-
-    # Step 1: when does the aa distribution stabilise
-    curves, N_by_source, final_distributions = analyze_convergence(sources)
-    print_N_by_source(N_by_source)
-    N = representative_N(curves)
-    print(f"\nN representativo (promedio de las tres fuentes): {N}")
-    plot_convergence(curves, N)
-
-    # Step 2: compare the distributions at << N, ~ N, >> N
-    plot_regimes(real_seqs, final_distributions, N, data_length)
-
-    plt.show()
-    print("\nGuardados: 4a_convergencia.png y 4a_regimenes.png")
+    fig.savefig(os.path.join(HERE, 'aa_distribution.png'), dpi=150)

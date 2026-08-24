@@ -215,14 +215,14 @@ def get_orf_sizes(seq):
     return orf_sizes
 
 def plot_orf_sizes(orf_sizes, title):
-    """Strip plot con los tamaños de los ORFs (en aminoácidos) por frame.
+    """Strip plot of the ORF sizes (in amino acids) per reading frame.
 
-    orf_sizes: dict {frame_label: [sizes]}, como el que arma ex_2b() a partir
-    de get_orf_sizes() aplicado a cada frame de get_six_frames_from_nt_seq().
+    orf_sizes: dict {frame_label: [sizes]}, like the one ex_2b() builds by
+    applying get_orf_sizes() to each frame of get_six_frames_from_nt_seq().
     """
     frame_labels = list(orf_sizes.keys())
-    # RNG separado para el jitter, así no toca el estado del módulo random
-    # que se usa para generar las secuencias.
+    # A separate RNG for the jitter, so it does not disturb the random module
+    # state used to generate the sequences.
     jitter_rng = random.Random()
 
     fig, ax = plt.subplots(figsize=(9, 4.5))
@@ -401,7 +401,10 @@ def ex_1b_ii():
 
 
 def ex_1b_iii():
-    """Análisis escrito, sobre una corrida con n = 1000 para ambas secuencias."""
+    """Written analysis of a run with n = 1000 for both sequences.
+
+    The printed text stays in Spanish: it is an answer for the report.
+    """
     print("""
 Comparación entre las dos secuencias aleatorias, basada en una corrida del
 programa con el mismo tamaño para ambas secuencias (1000 aminoácidos y 3000

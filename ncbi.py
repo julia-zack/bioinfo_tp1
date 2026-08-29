@@ -38,7 +38,7 @@ def fetch_proteins(organism, n=300, reviewed_only=True):
     webenv = search["WebEnv"]
     query_key = search["QueryKey"]
     total = min(int(search["Count"]), n)
-    print(f"{organism}: {search['Count']} proteinas encontradas, bajando {total}")
+    print(f"{organism}: {search['Count']} proteins found, downloading {total}")
 
     records = []
     batch = 200
@@ -67,10 +67,10 @@ def get_real_sequences(organism, cache):
     """Real protein sequences. Uses the cache file if it exists; otherwise
     downloads them from NCBI and saves them so they are not fetched again."""
     if os.path.exists(cache):
-        print(f"Usando secuencias cacheadas de {cache}")
+        print(f"Using cached sequences from {cache}")
         with open(cache) as f:
             return json.load(f)
-    print(f"Descargando proteinas de {organism}...")
+    print(f"Downloading proteins for {organism}...")
     seqs = clean_sequences(fetch_proteins(organism, n=300))
     os.makedirs(os.path.dirname(cache), exist_ok=True)   # create data/ if missing
     with open(cache, "w") as f:

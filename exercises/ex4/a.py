@@ -1,74 +1,85 @@
 """4a) Compare Distribucion de aminoacidos de secuencia de proteinas al azar
 vs. secuencias de proteinas reales.
 
-4b) Analice como cambian las distribuciones al aumentar el tamano de la
-secuencia "al azar" analizada, y al incrementar el numero de secuencias reales
-analizadas. Cuando es suficiente?
+Sources compared, all with exactly the same number of residues:
+  - Random DNA: information-free residues, obtained by translating random DNA,
+    so they still obey the genetic code.
+  - E. coli, yeast, human: real proteins downloaded from NCBI.
+  - Natural: the three organisms pooled in equal parts. 4e needs a single
+    reference distribution to score an ORF against, and this is it.
 
-Design, in two steps:
-
-Step 1
-Pick the real proteins to use: E. coli and human.
-When does the distribution stabilise?
--> N is the number of residues beyond which the frequency estimate stops changing.
-
-Step 2
-Compare the three distributions (random, E. coli, human) at sample sizes
-<< N, ~ N and >> N, to show graphically that below N the estimate is
-unreliable and above N it is stable.
-
-Produces:  4a_convergencia.png  and  4a_regimenes.png
-The real sequences ship pre-downloaded in data/. If you delete those files,
-the first run fetches them from NCBI again and re-caches them there.
+Produces:  aa_distribution.png  and  aa_natural_vs_random.png
 """
 
 import os
+import random
 
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sequences import AA, generate_random_aa_sequence
-from stats import (
-    THRESHOLD,
-    concatenate_til_n,
-    convergence_curve,
-    find_N,
-    freqs,
-)
+from sequences import AA, expected_aa_frequencies, generate_random_aa_sequence_from_dna
+from stats import freqs
 from ncbi import cache_path, get_real_sequences
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # real organisms to compare (name -> (NCBI name, cache file))
 REAL_ORGANISMS = {
-    "E. coli": ("Escherichia coli", cache_path("sequences_ecoli.json")),
-    "Human":   ("Homo sapiens",     cache_path("sequences_human.json")),
+    "E. coli": ("Escherichia coli",          cache_path("sequences_ecoli.json")),
+    "Yeast":   ("Saccharomyces cerevisiae",  cache_path("sequences_yeast.json")),
+    "Human":   ("Homo sapiens",              cache_path("sequences_human.json")),
 }
-COLOURS = {"Random": "#c1666b", "E. coli": "#4a6fa5", "Human": "#6a9955"}
+
+# Null model: residues obtained by translating random DNA. Information-free,
+# but subject to the genetic code, so a stricter control than uniform
+# residues. The uniform case is the 1/20 line drawn on each figure.
+RANDOM_SOURCES = ["Random DNA"]
+
+COLOURS = {
+    "Random DNA": "#d9613d",   # warm: the control
+    "Natural":    "#2e8b6f",   # the pooled real profile (figure 3 only)
+    "E. coli":    "#97baed",   # cool: the three real organisms
+    "Yeast":      "#7de2ef",
+    "Human":      "#98efaf",
+}
+
+# Which proteins end up in a truncated sample must not depend on the order
+# NCBI happened to return them in, so the lists are shuffled once, with a
+# fixed seed to keep runs reproducible.
+SAMPLE_SEED = 0
+
 
 def run():
     real_seqs = download_seqs()
     data_length = calculate_data_length(real_seqs)
     sources = build_sources(real_seqs, data_length)
+    natural = build_natural_source(sources, real_seqs)
 
-    # Step 1: when does the aa distribution stabilise
-    curves, N_by_source, final_distributions = analyze_convergence(sources)
-    print_N_by_source(N_by_source)
-    N = representative_N(N_by_source)
-    print(f"\nN representativo (suficiente para las tres fuentes): {N}")
-    plot_convergence(curves, N)
+    print("\nSources compared:")
+    for name, seq in sources.items():
+        print(f"  {name:<11} {len(seq):>7} residues")
+    print(f"  {'Natural':<11} {len(natural):>7} residues  (pooled reference)")
 
-    # Step 2: compare the distributions at << N, ~ N, >> N
-    plot_regimes(real_seqs, final_distributions, N, data_length)
+    plot_distributions(sources)
+    plot_natural_vs_random(natural, real_seqs, data_length)
 
     plt.show()
-    print("\nGuardados: aa_stabilized.png y aa_distribution.png")
+    print("\nSaved: aa_distribution.png and aa_natural_vs_random.png")
+
 
 def download_seqs():
-    """Load (or download and cache) the real sequences for each organism."""
+    """Load (or download and cache) the real sequences for each organism.
+
+    The protein list of each organism is shuffled, because later steps keep
+    only the first `data_length` residues: shuffling is what makes that a
+    random sample of the organism and not a slice of NCBI's ordering.
+    """
+    shuffler = random.Random(SAMPLE_SEED)
     real_seqs = {}
     for name, (org, cache) in REAL_ORGANISMS.items():
-        real_seqs[name] = get_real_sequences(org, cache)
+        seqs = list(get_real_sequences(org, cache))
+        shuffler.shuffle(seqs)
+        real_seqs[name] = seqs
     return real_seqs
 
 
@@ -86,145 +97,123 @@ def calculate_data_length(real_seqs):
 
 
 def build_sources(real_seqs, length):
-    """Build, for each source, a string of EXACTLY `length` residues: one
-    random sequence, and the real ones truncated to `length`."""
-    sources = {"Random": generate_random_aa_sequence(length)}
+    """Build, for each source, a string of EXACTLY `length` residues: the
+    random control, and the real ones truncated to `length`.
+
+    The real lists arrive shuffled from download_seqs(), so truncating gives
+    a random sample of the organism.
+    """
+    sources = {"Random DNA": generate_random_aa_sequence_from_dna(length)}
     for name, seqs in real_seqs.items():
         full_sequence = "".join(seqs)
         sources[name] = full_sequence[:length]
     return sources
 
 
-def analyze_convergence(sources):
-    """For each source compute: its convergence curve, its N, and its final
-    distribution (using every residue)."""
-    curves = {}
-    N_by_source = {}
-    final_distributions = {}
-    for name, res in sources.items():
-        grid, ds = convergence_curve(res)
-        curves[name] = (grid, ds)
-        N_by_source[name] = find_N(grid, ds)
-        final_distributions[name] = freqs(res)
-    return curves, N_by_source, final_distributions
+def build_natural_source(sources, real_seqs):
+    """One pooled "natural" string: the organism sources concatenated.
+
+    4e needs a single reference distribution to score an ORF against, and
+    scoring against three organisms separately is not an option. Each organism
+    contributes the same number of residues (rather than an amount
+    proportional to its proteome), so none of them dominates the profile.
+
+    Unlike the sources being compared, this one uses every residue available:
+    it is a reference, not a competitor, so a less noisy estimate is free.
+    """
+    return "".join(sources[name] for name in real_seqs)
 
 
-def print_N_by_source(N_by_source):
-    print("\nTamano de estabilizacion N (residuos) por fuente:")
-    for name, N in N_by_source.items():
-        print(f"  {name}: N = {N}")
+def plot_distributions(sources):
+    """Figure 1: amino acid distribution of every source, using all the data.
+
+    This is the comparison 4a asks for: the random control against each real
+    organism. Sorted by mean frequency across the organisms, so the control
+    can be read against them residue by residue.
+
+    The pooled natural profile is not drawn here; it has its own figure.
+    """
+    names = list(sources)
+    distributions = {name: freqs(seq) for name, seq in sources.items()}
+    organisms = [n for n in names if n not in RANDOM_SOURCES]
+    order = sorted(
+        AA,
+        key=lambda a: sum(distributions[n].get(a, 0) for n in organisms) / len(organisms),
+        reverse=True)
+
+    positions = np.arange(len(order))
+    bar_width = 0.8 / len(names)
+
+    fig, ax = plt.subplots(figsize=(13, 5))
+    for j, name in enumerate(names):
+        heights = [distributions[name].get(a, 0) for a in order]
+        ax.bar(positions - 0.4 + bar_width * (j + 0.5), heights,
+               bar_width * 0.9, color=COLOURS[name],
+               label=f'{name}  (n = {len(sources[name]):,})')
+
+    ax.axhline(1 / len(AA), color='#b0b0b0', linestyle='--', linewidth=1, zorder=0)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(order)
+    ax.set_xlabel('AA')
+    ax.set_ylabel('Relative frequency of residues')
+    ax.set_title('Amino acid distribution: random control vs real proteins')
+    ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+    ax.legend(frameon=False, ncol=len(names))
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, 'aa_distribution.png'), dpi=150)
 
 
-def representative_N(N_by_source):
-    """N where ALL sources have already stabilised: the largest per-source N
-    (the slowest one)."""
-    return max(N_by_source.values())
+def plot_natural_vs_random(natural, real_seqs, data_length):
+    """Figure 3: the pooled natural profile against the random control.
 
+    The vertical bars show the min-max range across the three organisms, so
+    the spread of "natural" is visible next to the gap to random. If that
+    range overlaps the random bar for an amino acid, that residue carries no
+    discriminating power on its own.
+    """
+    natural_freqs = freqs(natural)
+    # The control here is a reference, not a sample: use its exact frequencies
+    # so no sampling noise of its own enters the comparison.
+    random_freqs = expected_aa_frequencies()
+    per_organism = {name: freqs("".join(seqs)[:data_length])
+                    for name, seqs in real_seqs.items()}
 
-def mark_N_on_xaxis(ax, N):
-    """Add N as one more tick on the X axis, formatted like the 10^k ticks but
-    highlighted (bold + a fourth colour) and only once."""
-    # 1) build the "decade" ticks (10^2, 10^3, ...) that fall inside the range
-    lo, hi = ax.get_xlim()
-    min_exponent = int(np.ceil(np.log10(lo)))
-    max_exponent = int(np.floor(np.log10(hi)))
-    decades = []
-    for k in range(min_exponent, max_exponent + 1):
-        decades.append(10 ** k)
-    # 2) add N to the tick list (without duplicating it if it lands on a decade)
-    ticks = sorted(set(decades + [N]))
-    ax.set_xticks(ticks)
-    # 3) label: N as a plain number; the decades as 10^k
-    labels = []
-    for t in ticks:
-        if t == N:
-            labels.append(str(int(N)))
-        else:
-            exponent = int(round(np.log10(t)))
-            labels.append(r'$10^{%d}$' % exponent)
-    ax.set_xticklabels(labels)
-    # 4) highlight N's label (bold + colour)
-    for lbl, t in zip(ax.get_xticklabels(), ticks):
-        if t == N:
-            lbl.set_color('#d1462f')       # a fourth colour, so it stands out
-            lbl.set_fontweight('bold')
+    order = sorted(AA, key=lambda a: natural_freqs.get(a, 0), reverse=True)
+    positions = np.arange(len(order))
+    bar_width = 0.38
 
+    fig, ax = plt.subplots(figsize=(12, 5))
+    ax.bar(positions - bar_width / 2,
+           [natural_freqs.get(a, 0) for a in order],
+           bar_width, color=COLOURS['Natural'],
+           label=f'Natural (pooled)  (n = {len(natural):,})')
+    ax.bar(positions + bar_width / 2,
+           [random_freqs.get(a, 0) for a in order],
+           bar_width, color=COLOURS['Random DNA'],
+           label='Random DNA (exact)')
 
-def plot_convergence(curves, N):
-    """Figure 1: one convergence curve per source, with N marked."""
-    fig, ax = plt.subplots(figsize=(9, 5))
-    for name, (grid, ds) in curves.items():
-        ax.plot(grid, ds, marker='o', color=COLOURS[name], label=name)
-    ax.axhline(THRESHOLD, color='#b0b0b0', linestyle='--', linewidth=1, zorder=0,
-               label=f'threshold = {THRESHOLD}')
-    ax.axvline(N, color='#d1462f', linestyle=':', linewidth=1.3)
-    ax.set_xscale('log')
-    ax.set_xlabel('Residues analysed')
-    ax.set_ylabel('Distance to the final distribution')
-    ax.set_title('AA distribution stabilization')
+    # min-max across organisms, drawn over the natural bar
+    for x, a in zip(positions, order):
+        values = [d.get(a, 0) for d in per_organism.values()]
+        ax.plot([x - bar_width / 2] * 2, [min(values), max(values)],
+                color='#333333', linewidth=1.2, zorder=4)
+
+    ax.axhline(1 / len(AA), color='#b0b0b0', linestyle='--', linewidth=1, zorder=0)
+    ax.set_xticks(positions)
+    ax.set_xticklabels(order)
+    ax.set_xlabel('AA')
+    ax.set_ylabel('Relative frequency of residues')
+    ax.set_title('Natural profile vs random control '
+                 '(vertical bars: range across E. coli, yeast and human)')
     ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
     ax.set_axisbelow(True)
     for side in ('top', 'right'):
         ax.spines[side].set_visible(False)
     ax.legend(frameon=False)
 
-    mark_N_on_xaxis(ax, N)
-
     fig.tight_layout()
-    fig.savefig(os.path.join(HERE, 'aa_stabilized.png'), dpi=150)
-
-
-def choose_regimes(N, data_length):
-    """Three sample sizes to compare: far below N, around N, and all the data
-    available (far above N)."""
-    R_small = 1000                # far below N: still noisy (try 500 for more noise)
-    R_med = min(N, data_length)   # around N
-    R_large = data_length         # all the data available (>> N)
-    return [
-        (f'<< N  (R = {R_small})', R_small),
-        (f'~ N   (R = {R_med})',   R_med),
-        (f'>> N  (R = {R_large})', R_large),
-    ]
-
-
-def plot_regimes(real_seqs, final_distributions, N, data_length):
-    """Figure 2: aa distribution of the three sources at three sample sizes
-    (<< N, ~ N, >> N)."""
-    regimes = choose_regimes(N, data_length)
-
-    # sort the aa by their frequency in E. coli, so the plot reads better
-    order = sorted(AA, key=lambda a: final_distributions["E. coli"].get(a, 0), reverse=True)
-    base_positions = np.arange(len(order))   # one x position per amino acid
-    bar_width = 0.27
-
-    fig, axes = plt.subplots(3, 1, figsize=(12, 11), sharex=True)
-    for ax, (regime_label, R) in zip(axes, regimes):
-        # aa distribution of each source using R residues
-        samples = {
-            "Random":  freqs(generate_random_aa_sequence(R)),
-            "E. coli": freqs(concatenate_til_n(real_seqs["E. coli"], R)),
-            "Human":   freqs(concatenate_til_n(real_seqs["Human"], R)),
-        }
-        # one batch of bars per source, shifted left/centre/right
-        for j, name in enumerate(["Random", "E. coli", "Human"]):
-            distribution = samples[name]
-            heights = []
-            for a in order:
-                heights.append(distribution.get(a, 0))
-            positions = base_positions + (j - 1) * bar_width
-            ax.bar(positions, heights, bar_width, label=name, color=COLOURS[name])
-
-        ax.axhline(1 / len(AA), color='#b0b0b0', linestyle='--', linewidth=1, zorder=0)
-        ax.set_title(f'Sample {regime_label} residues')
-        ax.set_ylabel('Frequency')
-        ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
-        ax.set_axisbelow(True)
-        for side in ('top', 'right'):
-            ax.spines[side].set_visible(False)
-
-    axes[0].legend(frameon=False, ncol=3)
-    axes[-1].set_xticks(base_positions)
-    axes[-1].set_xticklabels(order)
-    axes[-1].set_xlabel('AA')
-    fig.tight_layout()
-    fig.savefig(os.path.join(HERE, 'aa_distribution.png'), dpi=150)
+    fig.savefig(os.path.join(HERE, 'aa_natural_vs_random.png'), dpi=150)

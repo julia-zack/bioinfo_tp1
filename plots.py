@@ -85,7 +85,7 @@ def plot_orf_sizes(orf_sizes, title):
     """
     frame_labels = list(orf_sizes.keys())
     # A separate RNG for the jitter, so it does not disturb the random module
-    # state used to generate the sequences.
+    # state that generates the sequences.
     jitter_rng = random.Random()
 
     fig, ax = plt.subplots(figsize=(9, 4.5))

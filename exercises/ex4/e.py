@@ -20,4 +20,4 @@ Piezas ya disponibles:
 
 
 def run():
-    raise NotImplementedError("4e todavia no esta implementado")
+    raise NotImplementedError("4e is not implemented yet")

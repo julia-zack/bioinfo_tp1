@@ -59,6 +59,46 @@ def generate_random_nt_sequence(length, gc=0.5):
     return ''.join(random.choices(NUCLEOTIDES, weights=weights, k=length))
 
 
+def generate_random_aa_sequence_from_dna(length, gc=0.5):
+    """Random protein obtained by translating random DNA.
+
+    The residues carry no information, but they follow the genetic code, so
+    amino acids with more codons (L, R, S) come out more often. Stop codons
+    are dropped, because a protein has no internal stops.
+    """
+    residues = ''
+    while len(residues) < length:
+        # 3 nt per codon, plus a margin for the ~4.7% that translate to a stop
+        missing = length - len(residues)
+        nt_seq = generate_random_nt_sequence(int(missing * 3 * 1.2) + 3, gc=gc)
+        residues += get_aa_seq_from_nt_seq(nt_seq).replace('*', '')
+    return residues[:length]
+
+
+def expected_aa_frequencies(gc=0.5):
+    """Exact amino acid frequencies of the random-DNA null model.
+
+    Each codon's probability is the product of its three nucleotide
+    probabilities; the codons are then grouped by the amino acid they encode,
+    stops are dropped and the rest renormalised. With gc=0.5 this reduces to
+    (number of codons)/61.
+
+    Sampling with generate_random_aa_sequence_from_dna() converges to this, so
+    use this one wherever the null model is a reference rather than a sample.
+    """
+    base_prob = {'A': (1 - gc) / 2, 'T': (1 - gc) / 2, 'C': gc / 2, 'G': gc / 2}
+
+    frequencies = {}
+    for codon, residue in CODON_TABLE.items():
+        if residue == '*':
+            continue
+        probability = base_prob[codon[0]] * base_prob[codon[1]] * base_prob[codon[2]]
+        frequencies[residue] = frequencies.get(residue, 0) + probability
+
+    total = sum(frequencies.values())
+    return {residue: p / total for residue, p in frequencies.items()}
+
+
 def gc_fraction(nt_seq):
     """Fraction of G and C, ignoring ambiguity codes (N, R, Y, ...)."""
     counts = {base: str(nt_seq).upper().count(base) for base in 'ACGT'}
@@ -105,8 +145,8 @@ def get_aa_from_codon(codon):
 def get_aa_seq_from_nt_seq(nt_seq):
     """Translate one reading frame with our own codon table.
 
-    Kept alongside the Biopython version on purpose: exercise 1 asks for the
-    translation to be written by hand.
+    Exercise 1 asks for the translation to be written by hand;
+    get_six_frames_from_nt_seq() uses Biopython instead.
     """
     aa_seq = ''
     # Trailing 1-2 nt do not form a codon, so they are discarded.

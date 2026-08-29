@@ -35,8 +35,8 @@ EXERCISES = {
 
 
 def usage():
-    print("uso: python3 main.py <ejercicio>")
-    print("ejercicios disponibles:")
+    print("usage: python3 main.py <exercise>")
+    print("available exercises:")
     for name in EXERCISES:
         print(f"  {name}")
 
@@ -47,7 +47,7 @@ def main():
         return
     name = sys.argv[1]
     if name not in EXERCISES:
-        print(f"'{name}' no es un ejercicio conocido.\n")
+        print(f"'{name}' is not a known exercise.\n")
         usage()
         return
     EXERCISES[name]()

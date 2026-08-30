@@ -1,64 +1,16 @@
-# TP 1 — Análisis de secuencias
+# TP 1: análisis de secuencias
+
+Cada ejercicio se corre por separado con `python3 main.py <ejercicio>`, por ejemplo `python3 main.py 4a`. El código está en `exercises/`, las funciones compartidas en `sequences.py`, `stats.py`, `ncbi.py` y `plots.py`. Las secuencias quedan cacheadas en `data/`; si se borran, la primera corrida vuelve a bajar los tres proteomas.
 
 ---
 
-## Datos: de dónde salen las secuencias reales
+## Datos
 
-Todo el objetivo 4 compara secuencias al azar contra secuencias reales, así que **qué se entiende por "secuencia real" define los resultados**. Las proteínas se bajan de **Swiss-Prot**, no de RefSeq, y la diferencia no es cosmética.
+Las proteínas reales se bajan de **Swiss-Prot**, la mitad revisada a mano de UniProt, donde hay una entrada por gen por organismo y las isoformas figuran como anotaciones adentro de la entrada. Se accede con el mismo cliente Entrez que usa el resto del TP, cambiando el filtro de la query a `swissprot[filter]`.
 
-### Qué es Swiss-Prot
+La primera versión usaba RefSeq y la cambiamos. RefSeq es genómico: un pipeline de anotación emite un registro por cada gen predicho de cada genoma secuenciado, así que la misma proteína aparece repetida por isoforma y por cepa, y conviven con entradas sin verificar. La query `"Escherichia coli"[Organism] AND refseq[filter]` devuelve 6.666.151 proteínas contra 23.300 en Swiss-Prot, y entre los primeros resultados humanos había cuatro isoformas de una misma proteína seguidas de cinco de otra. Para *E. coli* usamos además la cepa K-12 y no la especie entera, porque `"Escherichia coli"[Organism]` matchea todas las cepas secuenciadas y eso reintroduce la redundancia por cepa aun dentro de Swiss-Prot.
 
-UniProt tiene dos mitades:
-
-| | Swiss-Prot | TrEMBL |
-|---|---|---|
-| Curado por | personas | software |
-| Tamaño | ~570.000 entradas (todas las especies) | ~250 millones |
-| Se lo llama | *reviewed* | *unreviewed* |
-
-**Swiss-Prot es la mitad revisada a mano**: un curador lee la bibliografía y escribe la entrada. La regla que más importa acá es que hay **una entrada por gen por organismo**; las isoformas viven como anotaciones adentro de la entrada, no como registros separados.
-
-Se accede con el mismo cliente Entrez que ya usaba el código, porque NCBI espeja Swiss-Prot: alcanza con cambiar el filtro de la query (`swissprot[filter]` en vez de `refseq[filter]`). Es además el formato que pide el objetivo 3 del TP, el que parsean `SeqIO.read(handle, "swiss")` y `ExPASy.get_sprot_raw()`.
-
-### Por qué no RefSeq
-
-RefSeq es **genómico**: un pipeline de anotación automática emite un registro de proteína por cada gen predicho de cada genoma secuenciado. Eso trae tres problemas para un estudio de composición de aminoácidos, los tres verificados sobre las queries que usaba el código:
-
-1. **Redundancia por isoformas.** Los primeros hits de humano en RefSeq eran cuatro isoformas de *maestro heat-like repeat-containing protein family member 1* y cinco de *serine/threonine-protein phosphatase 2A activator*. Las 400 "proteínas" humanas eran más bien ~100 genes con duplicados. Secuencias casi idénticas no aportan información nueva.
-2. **Entradas no verificadas.** Todo ORF que llame el predictor se convierte en registro. La muestra de *E. coli* estaba dominada por `hypothetical protein`, dominios `DUF####` de función desconocida, proteínas de fago y secuencias marcadas `partial`.
-3. **Duplicación por cepa.** `"Escherichia coli"[Organism] AND refseq[filter]` matchea **6.666.151** proteínas — una por cada cepa anotada — contra 23.300 en Swiss-Prot.
-
-El contraste en las tres queries:
-
-| Organismo | RefSeq | Swiss-Prot |
-|---|---|---|
-| *E. coli* (todas las cepas) | 6.666.151 | 23.300 |
-| *E. coli* K-12 | — | **6.074** |
-| *S. cerevisiae* S288C | 6.029 | 7.923 |
-| *H. sapiens* | 197.929 | 20.616 |
-
-**Para *E. coli* se usa K-12, no la especie entera.** `"Escherichia coli"[Organism]` matchea todas las cepas secuenciadas, y aun dentro de Swiss-Prot eso reintroduce por la ventana la redundancia por cepa que se acababa de sacar por la puerta. K-12 es el proteoma de *un* organismo. (Swiss-Prot asigna las entradas a nivel de cepa y no de subcepa, así que `"...str. K-12 substr. MG1655"[Organism]` no matchea nada.) Levadura y humano ya eran de un solo organismo.
-
-Las 20.616 entradas humanas de Swiss-Prot son la comprobación de que efectivamente hay una por gen: el proteoma humano revisado ronda los 20.000 genes. Las 197.929 de RefSeq son ese mismo proteoma multiplicado por variantes de transcripto y predicciones.
-
-### Cómo se elige la muestra
-
-Cambiar de base de datos arregla la redundancia y las entradas basura, pero es un problema **independiente** de cómo se elige qué bajar, y ese segundo problema era real.
-
-`esearch` devuelve los ids en el orden por defecto de NCBI, que es por recencia de depósito. Tomar los primeros *n* es entonces quedarse con lo último que se depositó, no con una muestra del organismo. Se nota mirando la cabeza de las listas: los primeros hits de levadura son `Uncharacterized protein YNL155C-A` y parecidos, y los de humano son péptidos chicos tipo `Small humanin-like peptide 6`.
-
-El sesgo se midió. Bajando del mismo pool de 6.074 entradas de *E. coli* K-12, los primeros 400 ids contra 400 sorteados al azar:
-
-| Muestra | Largo medio |
-|---|---|
-| Primeros 400 (cabeza de la lista) | 256 |
-| 400 al azar | **304** |
-
-Tomar la cabeza sesga hacia proteínas 19% más cortas, y es la muestra al azar la que se acerca al largo medio conocido del proteoma de K-12 (~316). El sesgo además apuntaba en direcciones distintas según el organismo — humano daba 746 por cabeza contra 513 al azar, o sea *al revés* —, lo cual es peor que un sesgo constante: contamina las comparaciones **entre** organismos, no sólo los valores absolutos.
-
-### La solución: bajar el proteoma completo
-
-Para estos tres organismos el conjunto revisado no es una muestra del proteoma, **es el proteoma**. Así que no se muestrea: se baja todo.
+De cada organismo se baja el proteoma revisado completo, no una muestra:
 
 | Organismo | Proteínas | Residuos | Largo medio | Largo medio conocido |
 |---|---|---|---|---|
@@ -66,18 +18,9 @@ Para estos tres organismos el conjunto revisado no es una muestra del proteoma, 
 | *S. cerevisiae* | 7.888 | 3.544.698 | 449 | ~450 |
 | *H. sapiens* | 20.591 | 11.454.685 | 556 | ~560 |
 
-Los tres largos medios caen sobre el valor conocido. Antes ninguno lo hacía. Como no hay selección, no hay sesgo de selección posible — la pregunta de cómo muestrear desaparece en lugar de resolverse.
+Los tres largos medios coinciden con el valor conocido de cada proteoma, que es la comprobación de que la descarga no quedó sesgada. Bajar todo evita tener que elegir una muestra, y eso importa porque `esearch` devuelve los ids ordenados por fecha de depósito: tomar los primeros *n* hubiera significado quedarse con lo último depositado. Medido sobre K-12, los primeros 400 ids dan un largo medio de 256 residuos contra 304 de 400 sorteados al azar. El pool de ids se pagina, porque `esearch` devuelve como máximo 10.000 por request y el proteoma humano tiene 20.616 entradas.
 
-(Los totales quedan un poco abajo del número de entradas de la query porque `clean_sequences()` descarta las que tienen caracteres no estándar: selenocisteína, posiciones ambiguas.)
-
-Esto además es lo que hace **medible** el ejercicio 4b. Preguntar "¿cuántas proteínas alcanzan?" contra una referencia construida con las mismas 400 proteínas contesta sobre todo "bajaste 400"; contra el proteoma entero, una muestra de 400 es el 2% de la referencia y la respuesta pasa a ser sobre el organismo. El detalle está en 4b.
-
-### Dos detalles de implementación
-
-- **La paginación de `esearch` no es una optimización.** `esearch` devuelve como máximo 10.000 ids por request y el proteoma humano revisado tiene 20.616 entradas, así que una sola llamada devolvería la mitad más reciente. `fetch_id_pool()` pagina hasta juntar la lista completa. Sin eso, incluso un sorteo al azar sería un sorteo dentro de un pool ya sesgado.
-- **`fetch_proteins()` acepta `n` para tomar una muestra al azar** en vez de todo, con `seed` fijo para que sea reproducible. No se usa en 4a, pero es lo que permite los experimentos de 4b que varían el tamaño del corpus.
-
-Código en `ncbi.py`; las secuencias quedan cacheadas en `data/swissprot_*.json`. El nombre del archivo lleva la base de datos justamente para que un cache viejo de RefSeq no se reutilice sin querer.
+Los totales quedan algo por debajo del número de entradas de cada query porque se descartan las secuencias con caracteres no estándar, como selenocisteína o posiciones ambiguas.
 
 ---
 
@@ -85,85 +28,20 @@ Código en `ncbi.py`; las secuencias quedan cacheadas en `data/swissprot_*.json`
 
 > **4a)** Compare Distribución de aminoácidos de secuencia de proteínas al azar vs. secuencias de proteínas reales.
 
-### Método
+Se comparan cuatro fuentes con la misma cantidad de residuos (1.848.964, el tamaño del proteoma de *E. coli* K-12, que es el más chico de los tres) para que ninguna tenga ventaja por volumen de datos: una fuente al azar y los proteomas revisados de *E. coli*, levadura y humano. A los tres organismos combinados en partes iguales los llamamos *Natural*; esa es la distribución de referencia que después usa 4e.
 
-Se comparan cuatro fuentes con **exactamente 1.848.964 residuos** cada una (el total de la fuente real más chica, el proteoma de *E. coli* K-12), para que ninguna tenga ventaja por cantidad de datos, más un perfil combinado que sirve de referencia:
-
-| Fuente | Qué es |
-|---|---|
-| **Random DNA** | Control al azar: ADN aleatorio traducido, descartando los stops. Los residuos no tienen información, pero respetan el código genético. En la figura 1 es una muestra de 1.848.964 residuos; en la figura 2, donde funciona como referencia, se usan sus frecuencias **exactas**: la probabilidad de cada codón bajo ADN uniforme, agrupada por aminoácido, que con GC = 0,5 es (número de codones)/61. |
-| **E. coli**, **Yeast**, **Human** | Proteomas revisados completos de Swiss-Prot (6.062 / 7.888 / 20.591 proteínas; ver la sección *Datos*). |
-| **Natural** | Los tres organismos combinados en partes iguales (1.848.964 residuos de cada uno, 5.546.892 en total). Es la distribución de referencia que usa 4e. |
-
-Dos decisiones que conviene explicitar:
-
-- **El control es ADN al azar traducido, no aminoácidos uniformes.** Un control uniforme atribuiría a la biología diferencias que en realidad explica la degeneración del código (Leu tiene 6 codones, Met tiene 1). El caso uniforme igual está en el gráfico: es la línea punteada en 1/20 = 0,05.
-- **Las listas de proteínas se mezclan antes de recortar** (`SAMPLE_SEED`). Levadura y humano tienen más residuos que *E. coli*, así que se los recorta, y sin mezclar ese recorte se quedaría con las proteínas que NCBI devuelve primero, que son las depositadas más recientemente. Medido contra la distribución del proteoma completo: humano sin mezclar queda a 0,019 y mezclado a 0,004. *E. coli* da 0,000 en los dos casos porque es la fuente más chica y no se recorta nada.
-
-### Resultados
+La fuente al azar no se arma sorteando aminoácidos con igual probabilidad sino traduciendo ADN aleatorio y descartando los codones stop. La diferencia importa porque el código genético no reparte los codones de manera pareja (leucina tiene seis y metionina uno solo): sortear aminoácidos uniformemente daría una fuente que no se parece a ninguna secuencia obtenida de ADN, y la comparación terminaría midiendo esa desigualdad del código antes que lo que distingue a una proteína real. El caso uniforme igual aparece en las figuras, como la línea punteada en 0,05. Levadura y humano tienen más residuos que *E. coli*, así que se los recorta, y las listas se mezclan antes de hacerlo para que el recorte no termine quedándose con las proteínas depositadas más recientemente.
 
 ![Distribución de aminoácidos](exercises/ex4/aa_distribution.png)
 
-![Perfil natural vs control](exercises/ex4/aa_natural_vs_random.png)
+![Perfil natural vs secuencias al azar](exercises/ex4/aa_natural_vs_random.png)
 
-Las distancias entre distribuciones (distancia de variación total, ver 4c):
+Medidas con la métrica de 4c, las distancias al perfil Natural son 0,045 para humano, 0,063 para *E. coli*, 0,072 para levadura y 0,131 para la fuente al azar.
 
-| | vs Natural |
-|---|---|
-| Human | 0,045 |
-| E. coli | 0,063 |
-| Yeast | 0,072 |
-| **Random DNA** | **0,131** |
+Leucina aparece con la misma frecuencia en las dos fuentes, 0,098 al azar y 0,100 en los organismos, así que la cantidad de leucina de una secuencia no dice nada sobre su origen. Arginina es el caso opuesto: 0,098 al azar contra 0,052 en los organismos, una diferencia lo bastante grande como para distinguirlas. Lo mismo ocurre con cisteína (0,033 contra 0,016) y, en sentido inverso, con glutámico, aspártico y lisina, que los organismos usan cerca del doble. Los aminoácidos donde las dos fuentes coinciden no aportan información; los que se separan son los candidatos para el detector de 4e.
 
-### Discusión
+El resultado que más condiciona lo que sigue es que los organismos se diferencian entre sí casi tanto como del azar: *E. coli* y levadura están a 0,122, contra los 0,131 que separan a Natural del azar. Dicho de otro modo, dos proteínas reales de organismos distintos pueden estar tan lejos entre sí como una real de una al azar, así que usar un único perfil de referencia deja un margen de apenas 1,8×. Para 4e esto significa que la composición de aminoácidos por sí sola no va a alcanzar, y que habrá que explorar otros criterios.
 
-**Las secuencias reales no son uniformes, pero el azar tampoco.** El control de ADN al azar ya sale muy lejos de 1/20: Leu 0,098 y Met 0,016, porque la frecuencia esperada de cada aminoácido es (número de codones)/61. Comparar contra un control uniforme habría exagerado el efecto de la biología.
-
-**La diferencia real se separa en dos partes.** Tomando el control como referencia:
-
-| aa | Codones | Random DNA | Natural | Rango organismos |
-|---|---|---|---|---|
-| L | 6 | 0,098 | 0,100 | 0,095–0,106 |
-| S | 6 | 0,098 | 0,077 | 0,057–0,092 |
-| R | 6 | 0,098 | 0,052 | 0,045–0,057 |
-| E | 2 | 0,033 | 0,065 | 0,059–0,071 |
-| K | 2 | 0,033 | 0,058 | 0,044–0,073 |
-| D | 2 | 0,033 | 0,052 | 0,047–0,058 |
-| C | 2 | 0,033 | 0,016 | 0,012–0,022 |
-
-- **Leucina**: el código explica todo. Es el aminoácido más abundante tanto al azar (0,098) como en proteínas reales (0,100), simplemente porque tiene 6 codones.
-- **Arginina**: el código predice 0,098 pero los organismos usan casi la mitad, 0,052. Acá sí hay selección, y es la diferencia más grande de las veinte.
-- **Cisteína**: predicha en 0,033, observada en 0,016. Es reactiva y forma puentes disulfuro, así que su uso está restringido.
-- **Glutámico, aspártico y lisina**: al revés, los organismos los usan cerca del doble de lo que predice el código. Los tres están cargados.
-
-**Los organismos se diferencian entre sí casi tanto como del azar.** *E. coli*–Yeast da 0,122 y Yeast–Human 0,101, contra 0,131 de Natural al control. Es decir: "natural" no es un blanco angosto sino una nube ancha. El perfil combinado queda a 0,045–0,072 de cada organismo y a 0,131 del control, un margen de apenas ~1,8×.
-
-Esto es una limitación para 4e: la distribución de aminoácidos sola no alcanza para separar codificante de no codificante con confianza, y el largo del ORF va a tener que aportar la mayor parte del poder de discriminación.
-
-**Qué aminoácidos sirven para discriminar.** En `aa_natural_vs_random.png` las barras verticales muestran el rango entre los tres organismos. El criterio es comparar dos cantidades por aminoácido: la **separación** contra el control (|natural − azar|) y el **rango** entre organismos. Sirve el que tiene separación grande y rango chico; el que varía más entre organismos que contra el azar no aporta nada.
-
-| aa | Separación | Rango | ¿Sirve? |
-|---|---|---|---|
-| R | 0,046 | 0,012 | sí, con margen 4× |
-| E | 0,032 | 0,012 | sí |
-| D | 0,020 | 0,011 | sí |
-| C | 0,017 | 0,011 | sí |
-| K | 0,025 | 0,029 | no: varía más entre organismos |
-| S | 0,021 | 0,035 | no |
-| A | 0,008 | 0,041 | no |
-
-- Sirven: **R, E, D, C** — separación grande y consistente en los tres organismos. (Q, T y H también cumplen el criterio, pero con separaciones de 0,009–0,011, demasiado chicas para aportar.)
-- No sirven: **A, G, V, I, L, M, W, Y, F, P** por separación nula, y **K, S, N** porque, aunque su separación es grande, la diferencia entre organismos lo es más.
-
-El caso de **K** es el más instructivo: 0,033 al azar contra 0,058 natural parece una señal fuerte, pero los organismos van de 0,044 a 0,073 entre sí. Un ORF rico en lisina puede ser perfectamente humano o perfectamente levadura; no dice si es real. Este ranking se confirma después de manera independiente en 4d, midiendo AUC por aminoácido: R 0,905, E 0,722, C 0,691, y recién después K 0,629.
-
-### Cómo reproducirlo
-
-```
-python3 main.py 4a
-```
-
-Código en `exercises/ex4/a.py`. Las secuencias quedan cacheadas en `data/swissprot_*.json`; si se borran, la primera corrida vuelve a bajar los tres proteomas (unos dos minutos).
 
 ---
 
@@ -171,103 +49,23 @@ Código en `exercises/ex4/a.py`. Las secuencias quedan cacheadas en `data/swissp
 
 > **4b)** Analice cómo cambian las distribuciones al aumentar el tamaño de la secuencia "al azar" analizada, y al incrementar el número de secuencias reales analizadas. ¿Cuándo es suficiente?
 
-### Método
-
-La consigna nombra **dos ejes distintos**, y no son el mismo: se puede crecer en cantidad de **residuos** o en cantidad de **proteínas enteras**. Se miden por separado.
-
-En ambos casos la pregunta "¿cuándo es suficiente?" se responde igual: se compara la distribución obtenida con una muestra parcial contra la distribución final de esa misma fuente (usando *todos* sus datos), usando una métrica (la que luego usaremos en 4c), y se busca el punto donde la distancia cae por debajo de un umbral de 0,01.
-
-- **Eje 1 — residuos.** Aplica a las cuatro fuentes, incluido el control al azar. Llamamos **N** al número de residuos donde se cruza el umbral.
-- **Eje 2 — número de secuencias.** Aplica sólo a los organismos reales: el control al azar se genera como una única cadena, así que "número de secuencias" no está definido para él. Llamamos **K** al número de proteínas enteras donde se cruza el umbral.
-
-Cada curva se promedia sobre 5 barajadas del orden (`REPS`), para que no dependa de qué proteínas vinieron primero.
-
-### Resultados
+La consigna nombra dos ejes que no son el mismo: se puede crecer en cantidad de residuos o en cantidad de proteínas enteras. Los medimos por separado. En los dos casos la pregunta se responde igual, comparando la distribución de una muestra parcial contra la distribución final de esa misma fuente con la métrica de 4c, y buscando dónde la distancia cae por debajo de 0,01. Llamamos **N** al número de residuos donde se cruza el umbral y **K** al número de proteínas enteras. El eje de proteínas aplica sólo a los organismos, porque la fuente al azar se genera como una única cadena y no tiene "secuencias". Cada curva se promedia sobre 5 barajadas del orden, para que no dependa de qué proteínas vinieron primero.
 
 ![Estabilización de la distribución](exercises/ex4/aa_stabilized.png)
 
-**Eje 1 (residuos).** Todas las fuentes se estabilizan en el mismo orden de magnitud, ~3·10⁴ residuos:
+Las cuatro fuentes se estabilizan en el mismo orden de magnitud, alrededor de 3·10⁴ residuos: 31.400 la fuente al azar, 33.500 *E. coli*, 31.600 levadura y 31.300 humano. En proteínas enteras alcanza con unas 240 para *E. coli*, 252 para levadura y 425 para humano.
 
-| Fuente | N (residuos), mediana de 6 corridas |
-|---|---|
-| Random DNA | 31.400 |
-| E. coli | 33.500 |
-| Yeast | 31.600 |
-| Human | 31.300 |
+Los dos ejes no dan el mismo número. Las 425 proteínas humanas suman unos 236.000 residuos, más de siete veces el N del eje 1; en levadura la relación es 3,6 y en *E. coli* 2,2. La lectura directa es que hacen falta más residuos para estabilizar la distribución cuando llegan agrupados en proteínas enteras que cuando se cuentan sueltos.
 
-**Eje 2 (proteínas enteras).** Alcanza con unas **240–425 proteínas**, pero eso equivale a muchos más residuos que el N del eje 1:
-
-| Organismo | K (proteínas) | de un proteoma de | Largo medio | K en residuos |
-|---|---|---|---|---|
-| E. coli | ~240 | 6.062 | 305 | ~73.000 |
-| Yeast | ~252 | 7.888 | 449 | ~113.000 |
-| Human | ~425 | 20.591 | 556 | ~236.000 |
-
-Una vez pasado ese punto, la figura de regímenes muestra que la distribución efectivamente deja de moverse:
+La comparación, eso sí, no es del todo limpia. El eje 1 mide cada fuente contra su propia distribución final recortada a 1.848.964 residuos, mientras que el eje 2 mide cada organismo contra su proteoma completo, que en humano es seis veces más grande. Las referencias no son las mismas, y la diferencia entre ellas es mayor justamente en el organismo donde la brecha entre ejes es mayor, así que parte del factor 7,5 puede venir de ahí y no del agrupamiento en proteínas. Para separar las dos causas habría que repetir el eje 2 contra la misma referencia recortada que usa el eje 1.
 
 ![Distribuciones a distintos tamaños de muestra](exercises/ex4/aa_sample_sizes.png)
 
-Con R = 1000 (<< N) las barras son ruido: levadura aparece con K en 0,096 cuando su valor real es 0,073, *E. coli* con L en 0,119 contra 0,106, humano con P en 0,075 contra 0,064. Ninguno se sostiene. Con R ≈ N y R >> N los dos paneles son prácticamente idénticos — comparar L, S, R, E o K entre el segundo y el tercero: las diferencias quedan en el tercer decimal. Ahí está la respuesta a "cuándo es suficiente": el panel del medio ya contiene toda la información que aporta el de abajo, usando el **1,7%** de los datos (31.878 residuos contra 1.848.964).
+La figura de regímenes muestra lo mismo de otra forma. Con R = 1000, muy por debajo de N, las barras son ruido: levadura da K en 0,096 cuando su valor real es 0,073, *E. coli* da L en 0,119 contra 0,106. Con R ≈ N y con R >> N los dos paneles son casi idénticos y las diferencias quedan en el tercer decimal. El panel del medio ya contiene toda la información que aporta el de abajo usando el 1,7% de los datos.
 
-### Discusión
+Hay dos salvedades. La primera es que N y K son ruidosos: como el orden se baraja sin semilla fija, sobre 6 corridas N va de 17.800 a 35.400 y K de 206 a 666, así que lo que se sostiene es el orden de magnitud y no la cifra exacta. La curva es casi plana donde se la corta, y un desvío vertical de 0,002 corre el cruce a lo largo de casi una celda entera de la grilla.
 
-**Una proteína entera vale mucho menos que su cantidad de residuos.** Es el resultado más interesante de los dos ejes juntos. Con residuos sueltos alcanza con ~31.000; sumando proteínas enteras hacen falta entre 2 y 8 veces más residuos para llegar al mismo umbral. La razón es que los residuos dentro de una proteína **no son independientes**: una proteína de membrana es rica en hidrofóbicos, una ribosomal es rica en K y R. Cada proteína aporta una composición propia, así que agregar proteínas de a bloques agrega menos información que agregar la misma cantidad de residuos al azar.
-
-**El efecto crece con el largo medio.** La penalización por correlación se lee dividiendo los residuos que hacen falta por cada eje:
-
-| Organismo | Largo medio | K en residuos | N (residuos) | Penalización |
-|---|---|---|---|---|
-| E. coli | 305 | ~73.000 | ~33.500 | 2,2× |
-| Yeast | 449 | ~113.000 | ~31.600 | 3,6× |
-| Human | 556 | ~236.000 | ~31.300 | 7,5× |
-
-La penalización crece monótonamente con el largo medio de las proteínas del organismo. Cuanto más larga la proteína, más correlacionados los residuos que aporta y peor rinde cada uno: en humano hacen falta 7,5 veces más residuos si vienen empaquetados en proteínas que si vinieran sueltos.
-
-**Consecuencia práctica:** los proteomas completos que usa 4a (6.062 / 7.888 / 20.591 proteínas) están entre 14 y 48 veces por encima de K. El perfil de referencia que hereda 4e no tiene problema de tamaño de muestra. Pero un trabajo que bajara "unas 100 proteínas por organismo" estaría por debajo del umbral en los tres casos, y en humano por un factor de 4.
-
-### Advertencias metodológicas
-
-- **N y K son ruidosos.** Como el orden se baraja sin semilla fija, cambian de corrida en corrida: sobre 6 corridas, N va de 17.800 a 35.400 y K de 206 a 666. Los valores de las tablas son medianas; lo que se sostiene es el orden de magnitud (N ~ 3·10⁴ residuos, K ~ 2·10² a 4·10² proteínas), no la cifra exacta. El ruido viene de que la curva es casi plana donde se la corta: cerca del umbral cae 0,006 a lo largo de una celda entera de la grilla, así que un desvío vertical de 0,002 corre el cruce por casi toda la celda.
-- **La referencia sigue conteniendo a la muestra**, aunque ahora casi no importe. Cada curva se compara contra la distribución final de su propia fuente. Con el proteoma completo, una muestra de K = 425 proteínas es el 2% de las 20.591 de la referencia, así que la contaminación es despreciable. Con el corpus de 400 proteínas que se usaba antes era del 50%, y eso invalidaba la medición — ver abajo.
-
-### Por qué estos números son creíbles, y antes no lo eran
-
-Hay un test que distingue una medición real de un artefacto: **variar la cantidad de datos disponibles**. Si K mide una propiedad del organismo, no debería depender de cuántas proteínas bajamos.
-
-Con un corpus de 400 proteínas, K salía siempre alrededor de la mitad del corpus, cualquiera fuera el corpus:
-
-| Corpus | K | K/corpus |
-|---|---|---|
-| 25 | 22 | 0,88 |
-| 50 | 41 | 0,82 |
-| 100 | 77 | 0,77 |
-| 200 | 128 | 0,64 |
-| 398 | 207 | 0,52 |
-
-O sea que "K = 200" no decía *"este organismo necesita 200 proteínas"*, decía *"bajaste 400 proteínas"*. La medición era circular: la referencia estaba construida con las mismas proteínas que se estaban evaluando.
-
-Con el proteoma humano completo el test se aprueba:
-
-| Corpus | K | K/corpus |
-|---|---|---|
-| 200 | 130 | 0,65 |
-| 400 | 203 | 0,51 |
-| 1.000 | 304 | 0,30 |
-| 2.500 | 462 | 0,18 |
-| 6.000 | 592 | 0,10 |
-| 20.591 | 481 | 0,02 |
-
-A partir de ~2.500 proteínas K deja de seguir al corpus y se estanca en 460–590. Ese plateau es el número que significa algo: **humano necesita del orden de 500 proteínas**, no las ~200 que reportaba la versión anterior.
-
-Como control externo independiente: para una fuente uniforme, la distancia esperada por puro error de muestreo es 1,74/√R, que cruza el umbral de 0,01 en R ≈ 30.300. El N medido para el control al azar es ~31.400. Antes, con el corpus chico, la curva daba ~21.000 — sesgado hacia abajo, exactamente en la dirección que predice la contaminación. Ahora teoría y medición coinciden.
-
-### Cómo reproducirlo
-
-```
-python3 main.py 4b
-```
-
-Código en `exercises/ex4/b.py`; las funciones de convergencia están en `stats.py` (`convergence_curve` para el eje 1, `count_convergence_curve` para el eje 2).
+La segunda es que cada curva se compara contra la distribución final de su propia fuente, así que la muestra está contenida en la referencia. Con el proteoma completo eso es despreciable (K = 425 sobre 20.591 es el 2%), pero conviene comprobarlo: si K midiera una propiedad del organismo y no del corpus, no debería moverse al variar cuántas proteínas hay disponibles. Variando el corpus humano, K da 130 con 200 proteínas, 203 con 400, 304 con 1.000, 462 con 2.500, 592 con 6.000 y 481 con las 20.591. A partir de unas 2.500 deja de seguir al corpus y se estanca entre 460 y 590, que es el rango que significa algo. Como control externo, para una fuente uniforme la distancia esperada por error de muestreo es 1,74/√R, que cruza 0,01 en R ≈ 30.300, muy cerca de los 31.400 medidos.
 
 ---
 
@@ -275,18 +73,13 @@ Código en `exercises/ex4/b.py`; las funciones de convergencia están en `stats.
 
 > **4c)** Elija una métrica que permita comparar dos distribuciones. (p.ej., RMSE).
 
-Se eligió la **distancia de variación total** (TV), implementada en `stats.distributions_distance()`:
+Usamos la distancia de variación total, implementada en `stats.distributions_distance()`:
 
 ```
 TV(p, q) = 0,5 · Σ |p(a) − q(a)|
 ```
 
-Se prefirió sobre RMSE porque:
-
-- Está acotada entre 0 y 1, así que el número se interpreta solo.
-- Se lee directamente como "qué fracción de la masa de probabilidad hay que mover para convertir una distribución en la otra".
-- No depende de la cantidad de bins, a diferencia del RMSE crudo.
-- Permite restringirla a un subconjunto de aminoácidos sumando menos términos, que es lo que se explota en 4d.
+La elegimos sobre RMSE porque está acotada entre 0 y 1, así que el valor se interpreta sin referencia externa, y porque se lee directamente como qué fracción de la masa de probabilidad hay que mover para convertir una distribución en la otra. Tampoco depende de la cantidad de bins, y permite restringirla a un subconjunto de aminoácidos sumando menos términos, que es lo que se usa en 4d.
 
 ---
 
@@ -294,9 +87,7 @@ Se prefirió sobre RMSE porque:
 
 > **4d)** Escriba un código que dadas dos distribuciones las compare y obtenga la métrica correspondiente. Utilícela para: i) ver cómo evolucionan las distribuciones obtenidas en 4a al aumentar el tamaño de la muestra (evaluar cuándo la distribución deja de cambiar). ii) estudiar de manera sistemática las diferencias entre las distribuciones obtenidas en 4a para diferentes muestras (comparar distribuciones de secuencias naturales y al azar).
 
-La parte **(i)** es el análisis de convergencia de 4b: ahí la métrica se aplica a cada fuente contra su propia distribución final. Esta sección es la parte **(ii)**.
-
-### Distancias entre todas las fuentes
+La parte (i) es el análisis de convergencia de 4b, donde la métrica se aplica a cada fuente contra su propia distribución final. Esta sección es la parte (ii).
 
 ```
               Random DNA     E. coli       Yeast       Human     Natural
@@ -307,18 +98,14 @@ La parte **(i)** es el análisis de convergencia de 4b: ahí la métrica se apli
      Natural       0.131       0.063       0.072       0.045       0.000
 ```
 
-Lo importante no son los valores sino su escala relativa: **la distancia entre organismos (0,090–0,122) es del mismo orden que la distancia de cada organismo al azar (0,108–0,165)**. *Yeast* está a 0,122 de *E. coli* y a 0,165 del control: apenas 1,4× más lejos del azar que de otro organismo real.
+La matriz confirma con todos los pares lo que en 4a se veía en uno: las distancias entre organismos (0,090 a 0,122) están en el mismo orden que las distancias al azar (0,108 a 0,165). Levadura está a 0,122 de *E. coli* y a 0,165 del azar, apenas 1,4 veces más lejos.
 
-Es decir, "natural" no es un punto sino una nube ancha, y cualquier detector que use un único perfil de referencia hereda esa limitación.
-
-### Qué tan bien separa la métrica una secuencia individual
-
-La pregunta que importa para 4e no es cuánto se diferencian dos corpus grandes, sino si la métrica puede decidir sobre **una** secuencia. Se midió con AUC: se toman fragmentos de proteínas reales y controles al azar del mismo largo, se calcula la distancia de cada uno al perfil Natural, y se mide la probabilidad de que el fragmento real quede más cerca. 0,5 es azar, 1,0 es separación perfecta.
+Para 4e, sin embargo, la pregunta no es cuánto se diferencian dos conjuntos grandes sino si la métrica alcanza para decidir sobre una secuencia sola. Lo medimos con AUC: se toman fragmentos de proteínas reales y secuencias al azar del mismo largo, se calcula la distancia de cada uno al perfil Natural, y se mide la probabilidad de que el fragmento real quede más cerca. 0,5 es azar y 1,0 es separación perfecta.
 
 ![Discriminación según el largo](exercises/ex4/orf_discrimination.png)
 
 ```
-  length      all 20   E R K N C         R C
+  largo       20 aa   E R K N C         R C
       16       0.490       0.537       0.614
       30       0.445       0.566       0.624
       60       0.473       0.631       0.703
@@ -327,36 +114,11 @@ La pregunta que importa para 4e no es cuánto se diferencian dos corpus grandes,
      400       0.609       0.879       0.936
 ```
 
-AUC de cada aminoácido por separado, con fragmentos de 250 residuos:
+Usar los veinte aminoácidos es prácticamente inútil: se queda entre 0,44 y 0,57 hasta los 250 residuos. El motivo es de ruido, no de composición: en un fragmento de 250 residuos cada frecuencia tiene un error de muestreo de ±0,013, y sumar veinte términos de error tapa las cinco o seis diferencias que sí existen. Restringiendo la métrica a los aminoácidos que en 4a se separaban entre las dos fuentes, la AUC sube a 0,892 con R y C solos, y midiendo aminoácido por aminoácido el orden es R 0,905, E 0,722, C 0,691, K 0,629 y D 0,623.
 
-```
-  R: 0.905   E: 0.722   C: 0.691   K: 0.629   D: 0.623   S: 0.568   H: 0.534   M: 0.497
-```
+El límite aparece con los fragmentos cortos. A 16 residuos, que es la mediana de los ORFs medidos en 3c, el mejor subconjunto da 0,61 y los veinte juntos dan 0,49, indistinguible del azar. La señal recién se vuelve usable arriba de unos 120 residuos.
 
-### Discusión
+De ahí salen tres cosas para 4e. El largo es la señal principal, porque es la única que discrimina en ORFs cortos y porque es donde 3c mostró la diferencia más marcada (máximo real de 1121 residuos contra 231 en las secuencias al azar). La composición es una señal secundaria que sólo aporta arriba de unos 100 residuos. Y conviene usar pocos aminoácidos en lugar de los veinte, porque incluir los que no discriminan empeora el resultado.
 
-**Usar los 20 aminoácidos es casi inútil.** Se queda en 0,44–0,57 hasta los 250 residuos: prácticamente indistinguible de tirar una moneda. La razón es de ruido, no de biología: en un fragmento de 250 residuos cada frecuencia tiene un error de muestreo de ±0,013, y sumar veinte términos de error tapa las cinco o seis diferencias que sí son reales.
+Queda una advertencia: el subconjunto R y C se eligió mirando los mismos datos con los que después se lo evaluó, así que 0,936 es optimista. La versión rigurosa elegiría los aminoácidos con dos organismos y evaluaría sobre el tercero.
 
-**Un subconjunto chico funciona mucho mejor.** Con sólo R y C la AUC sube a 0,892 en 250 residuos y 0,936 en 400. R y C son justamente los casos donde el código genético predice frecuencia alta y la biología entrega baja (R: 0,098 esperado contra 0,052 observado; C: 0,033 contra 0,016), así que la discrepancia es grande y consistente en los tres organismos.
-
-**La composición no sirve en ORFs cortos.** A 16 residuos —la mediana de los ORFs medidos en 3c— hasta el mejor subconjunto da 0,61, y los 20 juntos dan 0,49, indistinguible del azar. La señal recién se vuelve usable arriba de ~120 residuos.
-
-### Consecuencia para 4e
-
-1. **El largo es la señal principal.** Es lo único que discrimina en ORFs cortos, y es donde 3c ya mostró la diferencia más fuerte (máximo real 1121 contra 231 del control).
-2. **La composición es señal secundaria**, y sólo aporta arriba de ~100 residuos.
-3. **Conviene usar pocos aminoácidos, no los 20.** Incluir los que no discriminan degrada activamente el resultado.
-
-Estos tres puntos justifican la forma del score de 4e: probabilidad base por largo, corregida por composición sólo cuando el ORF es lo bastante largo.
-
-### Advertencia metodológica
-
-El subconjunto R/C se eligió mirando los mismos datos con los que después se lo evaluó, así que 0,936 es optimista. La versión rigurosa elige los aminoácidos usando dos organismos y evalúa sobre el tercero, dejado afuera.
-
-### Cómo reproducirlo
-
-```
-python3 main.py 4d
-```
-
-Código en `exercises/ex4/d.py`.

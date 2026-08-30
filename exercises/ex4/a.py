@@ -23,11 +23,21 @@ from ncbi import cache_path, get_real_sequences
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# real organisms to compare (name -> (NCBI name, cache file))
+# real organisms to compare (name -> (organism name, cache file))
+#
+# The cache files are named after the source database. The previous
+# sequences_*.json held RefSeq downloads, and reusing those under the same name
+# would have silently mixed the two sources.
+# E. coli is pinned to K-12: '"Escherichia coli"[Organism]' matches every
+# sequenced strain (23.300 Swiss-Prot entries), which reintroduces the strain
+# redundancy the switch to Swiss-Prot was meant to remove. K-12 is one
+# organism's proteome (6.074). Yeast and human are already single-organism.
+# Swiss-Prot assigns entries to the strain level, not the substrain, so
+# "...str. K-12 substr. MG1655" matches nothing.
 REAL_ORGANISMS = {
-    "E. coli": ("Escherichia coli",          cache_path("sequences_ecoli.json")),
-    "Yeast":   ("Saccharomyces cerevisiae",  cache_path("sequences_yeast.json")),
-    "Human":   ("Homo sapiens",              cache_path("sequences_human.json")),
+    "E. coli": ("Escherichia coli K-12",     cache_path("swissprot_ecoli_k12.json")),
+    "Yeast":   ("Saccharomyces cerevisiae",  cache_path("swissprot_yeast.json")),
+    "Human":   ("Homo sapiens",              cache_path("swissprot_human.json")),
 }
 
 # Null model: residues obtained by translating random DNA. Information-free,

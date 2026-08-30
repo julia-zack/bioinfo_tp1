@@ -31,7 +31,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from sequences import AA
+from sequences import AA, expected_aa_frequencies, generate_random_aa_sequence_from_dna
 from stats import (
     THRESHOLD,
     convergence_curve,
@@ -54,40 +54,67 @@ def run():
     data_length = calculate_data_length(real_seqs)
     sources = build_sources(real_seqs, data_length)
 
+    # Both axes measure the distance to the same target: the organism's whole
+    # proteome, which is what "the distribution of this organism" means. The
+    # random source is measured against the exact distribution of its own null
+    # model, which is independent of any sample drawn from it.
+    pools, references = build_pools_and_references(real_seqs)
+
     # Step 1, axis 1: how many RESIDUES until the aa distribution stabilises
-    curves, N_by_source, final_distributions = analyze_convergence(sources)
+    curves, N_by_source = analyze_convergence(pools, references)
     print_N_by_source(N_by_source)
     N = representative_N(N_by_source)
     print(f"\nRepresentative N (enough for every source): {N}")
 
     # Step 1, axis 2: how many PROTEINS until an organism's distribution
-    # stabilises. Uses the full protein lists, not the truncated sources.
-    count_curves, K_by_organism = analyze_protein_count(real_seqs)
+    # stabilises. Same target, sample grown by whole proteins.
+    count_curves, K_by_organism = analyze_protein_count(real_seqs, references)
     print_K_by_organism(K_by_organism, real_seqs)
     K = representative_N(K_by_organism)
     print(f"\nRepresentative K (enough for every organism): {K}")
 
     plot_convergence(curves, N, count_curves, K_by_organism, K)
 
-    # Step 2: compare the distributions at << N, ~ N, >> N
+    # Step 2: compare the distributions at << N, ~ N, >> N. This one does use
+    # the equal-sized sources of 4a, because it compares sources against each
+    # other and that needs them to carry the same amount of data.
+    final_distributions = {name: freqs(seq) for name, seq in sources.items()}
     plot_regimes(sources, final_distributions, N, data_length)
 
     plt.show()
     print("\nSaved: aa_stabilized.png and aa_sample_sizes.png")
 
 
-def analyze_convergence(sources):
-    """For each source compute: its convergence curve, its N, and its final
-    distribution (using every residue)."""
+# Length of the random string used on axis 1. It has no natural size, so it
+# is set to the largest proteome, to cover the same range as the organisms.
+RANDOM_POOL_LENGTH = 11_500_000
+
+
+def build_pools_and_references(real_seqs):
+    """The residues each source is sampled from, and the target each one is
+    measured against.
+
+    For an organism both come from its whole proteome: the sample is a small
+    fraction of it at the sizes that matter, so the overlap is negligible.
+    For the random source the target is exact, so there is no overlap at all.
+    """
+    pools = {"Random DNA": generate_random_aa_sequence_from_dna(RANDOM_POOL_LENGTH)}
+    references = {"Random DNA": expected_aa_frequencies()}
+    for name, proteins in real_seqs.items():
+        pools[name] = "".join(proteins)
+        references[name] = freqs(pools[name])
+    return pools, references
+
+
+def analyze_convergence(pools, references):
+    """For each source, its convergence curve against the reference, and its N."""
     curves = {}
     N_by_source = {}
-    final_distributions = {}
-    for name, res in sources.items():
-        grid, ds = convergence_curve(res)
+    for name, res in pools.items():
+        grid, ds = convergence_curve(res, references[name])
         curves[name] = (grid, ds)
         N_by_source[name] = find_N(grid, ds)
-        final_distributions[name] = freqs(res)
-    return curves, N_by_source, final_distributions
+    return curves, N_by_source
 
 
 def print_N_by_source(N_by_source):
@@ -105,7 +132,7 @@ def representative_N(N_by_source):
     return max(N_by_source.values())
 
 
-def analyze_protein_count(real_seqs):
+def analyze_protein_count(real_seqs, references):
     """Second axis: for each organism, its curve against the NUMBER of whole
     proteins analysed, and the K at which it crosses the threshold.
 
@@ -115,7 +142,7 @@ def analyze_protein_count(real_seqs):
     count_curves = {}
     K_by_organism = {}
     for name, proteins in real_seqs.items():
-        counts, curve = count_convergence_curve(proteins)
+        counts, curve = count_convergence_curve(proteins, references[name])
         count_curves[name] = (counts, curve)
         K_by_organism[name] = find_N(counts, curve)
     return count_curves, K_by_organism

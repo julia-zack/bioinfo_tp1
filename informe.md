@@ -96,25 +96,33 @@ La parte (i) es el análisis de convergencia de 4b, donde la métrica se aplica 
 
 La matriz confirma con todos los pares lo que en 4a se veía en uno: las distancias entre organismos (0,090 a 0,122) están en el mismo orden que las distancias al azar (0,108 a 0,165). Levadura está a 0,122 de *E. coli* y a 0,165 del azar, apenas 1,4 veces más lejos.
 
-Para 4e, sin embargo, la pregunta no es cuánto se diferencian dos conjuntos grandes sino si la métrica alcanza para decidir sobre una secuencia sola. Lo medimos con AUC: se toman fragmentos de proteínas reales y secuencias al azar del mismo largo, se calcula la distancia de cada uno al perfil Natural, y se mide la probabilidad de que el fragmento real quede más cerca. 0,5 es azar y 1,0 es separación perfecta.
+Para 4e, sin embargo, la pregunta no es cuánto se diferencian dos conjuntos grandes sino si la métrica alcanza para decidir sobre una secuencia sola. Para medirlo tomamos fragmentos de proteínas reales y secuencias al azar del mismo largo, calculamos la distancia de cada uno al perfil Natural, y contamos con qué frecuencia el fragmento real queda más cerca que el aleatorio. Llamamos a eso la tasa de aciertos: 0,5 es lo que daría elegir al azar y 1,0 es separación perfecta.
 
 ![Discriminación según el largo](exercises/ex4/orf_discrimination.png)
 
 ```
   largo       20 aa   E R K N C         R C
-      16       0.490       0.537       0.614
-      30       0.445       0.566       0.624
-      60       0.473       0.631       0.703
-     120       0.490       0.712       0.800
-     250       0.568       0.820       0.892
-     400       0.609       0.879       0.936
+      16       0.489       0.535       0.618
+      30       0.474       0.570       0.636
+      60       0.454       0.638       0.711
+     120       0.467       0.694       0.777
+     250       0.574       0.828       0.895
+     400       0.607       0.877       0.935
 ```
 
-Usar los veinte aminoácidos es prácticamente inútil: se queda entre 0,44 y 0,57 hasta los 250 residuos. El motivo es de ruido, no de composición: en un fragmento de 250 residuos cada frecuencia tiene un error de muestreo de ±0,013, y sumar veinte términos de error tapa las cinco o seis diferencias que sí existen. Restringiendo la métrica a los aminoácidos que en 4a se separaban entre las dos fuentes, la AUC sube a 0,892 con R y C solos, y midiendo aminoácido por aminoácido el orden es R 0,905, E 0,722, C 0,691, K 0,629 y D 0,623.
+Usar los veinte aminoácidos es prácticamente inútil: se queda entre 0,45 y 0,57 hasta los 250 residuos. El motivo es ruido, no composición: en un fragmento de 250 residuos cada frecuencia tiene un error de muestreo, y sumar veinte términos de error tapa las cinco o seis diferencias que sí existen. Restringiendo la métrica a los aminoácidos que en 4a se separaban entre las dos fuentes, la tasa sube a 0,895 con R y C solos, y midiendo aminoácido por aminoácido el orden es R 0,900, E 0,733, C 0,699, K 0,636 y D 0,605.
 
-El límite aparece con los fragmentos cortos. A 16 residuos, que es la mediana de los ORFs medidos en 3c, el mejor subconjunto da 0,61 y los veinte juntos dan 0,49, indistinguible del azar. La señal recién se vuelve usable arriba de unos 120 residuos.
+El límite aparece con los fragmentos cortos. A 16 residuos, que es la mediana de los ORFs medidos en 3c, el mejor subconjunto da 0,62 y los veinte juntos dan 0,49, indistinguible del azar. La señal recién se vuelve usable arriba de unos 120 residuos.
 
-De ahí salen tres cosas para 4e. El largo es la señal principal, porque es la única que discrimina en ORFs cortos y porque es donde 3c mostró la diferencia más marcada (máximo real de 1121 residuos contra 231 en las secuencias al azar). La composición es una señal secundaria que sólo aporta arriba de unos 100 residuos. Y conviene usar pocos aminoácidos en lugar de los veinte, porque incluir los que no discriminan empeora el resultado.
+De ahí salen tres cosas para 4e. El largo es la señal principal, porque es la única que discrimina en ORFs cortos y porque es donde 3c mostró la diferencia más marcada (máximo real de 1121 residuos contra 231 en las secuencias al azar). La composición es una señal secundaria que sólo aporta valor arriba de unos 100 residuos. Y conviene usar pocos aminoácidos en lugar de los veinte, porque incluir los que no discriminan empeora el resultado.
 
-Queda una advertencia: el subconjunto R y C se eligió mirando los mismos datos con los que después se lo evaluó, así que 0,936 es optimista. La versión rigurosa elegiría los aminoácidos con dos organismos y evaluaría sobre el tercero.
+Queda una objeción posible: R y C se eligieron porque eran los que mejor separaban en estos datos, y después se midió con ellos sobre esos mismos datos, así que parte del 0,935 podría ser casualidad de la muestra contada como acierto. Para descartarlo repetimos el experimento dejando un organismo afuera. Se busca el mejor par entre los 190 posibles usando sólo los otros dos, se arma el perfil de referencia también sólo con esos dos, y recién entonces se mide sobre el organismo que quedó afuera, que no participó ni de la elección ni de la referencia.
+
+| Organismo afuera | Par elegido | Tasa en los dos de entrenamiento | Tasa en el que quedó afuera |
+|---|---|---|---|
+| *E. coli* | E R | 0,904 | 0,936 |
+| Levadura | E R | 0,850 | 0,882 |
+| Humano | C R | 0,959 | 0,886 |
+
+Arginina aparece en los tres pares y el segundo aminoácido alterna entre glutámico y cisteína, así que la elección no depende del organismo que se mire. Las tasas sobre el organismo dejado afuera van de 0,882 a 0,936, el mismo rango que las de entrenamiento, de modo que el 0,935 de la tabla anterior no era producto de haber elegido mirando los mismos datos. Que en dos de los tres casos la tasa sea mayor sobre el organismo dejado afuera no es raro: los organismos difieren en cuán fácil es distinguirlos del azar, y eso pesa más que la diferencia entre elegir y evaluar.
 

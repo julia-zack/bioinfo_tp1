@@ -17,6 +17,7 @@ real protein from a single random one?
 Produces:  orf_discrimination.png
 """
 
+import itertools
 import os
 import random
 
@@ -67,10 +68,11 @@ def subset_distance(seq, reference, subset):
     return 0.5 * sum(abs(frequencies.get(a, 0) - reference.get(a, 0)) for a in subset)
 
 
-def auc(real_scores, control_scores):
+def hit_rate(real_scores, control_scores):
     """Probability that a real fragment scores closer to natural than a random one.
 
-    0.5 is chance, 1.0 is perfect separation.
+    Takes one real fragment and one random one, and counts how often the real
+    one wins, with ties worth half. 0.5 is chance, 1.0 is perfect separation.
     """
     wins = 0.0
     for r in real_scores:
@@ -80,7 +82,7 @@ def auc(real_scores, control_scores):
 
 
 def discrimination_by_length(proteins, natural_freqs, rng, samples=400):
-    """AUC of each subset, as a function of the fragment length scored.
+    """Hit rate of each subset, as a function of the fragment length scored.
 
     An ORF detector scores one ORF at a time, so what matters is not how well
     the metric separates two large corpora but how well it separates two short
@@ -99,12 +101,12 @@ def discrimination_by_length(proteins, natural_freqs, rng, samples=400):
         for name, subset in SUBSETS.items():
             real_scores = [subset_distance(f, natural_freqs, subset) for f in fragments]
             control_scores = [subset_distance(c, natural_freqs, subset) for c in controls]
-            results[name].append(auc(real_scores, control_scores))
+            results[name].append(hit_rate(real_scores, control_scores))
     return results
 
 
 def print_discrimination(results):
-    print("\nAUC separating a real fragment from a random one, by fragment length:\n")
+    print("\nHit rate separating a real fragment from a random one, by fragment length:\n")
     print(f"{'length':>8}" + "".join(f"{name:>12}" for name in results))
     for i, length in enumerate(FRAGMENT_LENGTHS):
         print(f"{length:>8}" + "".join(f"{results[n][i]:12.3f}" for n in results))
@@ -120,15 +122,86 @@ def print_single_residues(proteins, natural_freqs, rng, length=250, samples=300)
     for a in AA:
         real_scores = [subset_distance(f, natural_freqs, [a]) for f in fragments]
         control_scores = [subset_distance(c, natural_freqs, [a]) for c in controls]
-        scores.append((auc(real_scores, control_scores), a))
+        scores.append((hit_rate(real_scores, control_scores), a))
 
     scores.sort(reverse=True)
-    print(f"\nAUC of each amino acid on its own (fragments of {length}):\n")
+    print(f"\nHit rate of each amino acid on its own (fragments of {length}):\n")
     print("  " + "   ".join(f"{a}: {v:.3f}" for v, a in scores[:8]))
 
 
+# ---------------------------------------------------------------------------
+# Leave-one-organism-out: does the choice of amino acids generalise?
+# ---------------------------------------------------------------------------
+
+HOLDOUT_LENGTH = 250   # fragment length used for the held-out test
+
+
+def best_pair(train_seqs, reference, rng, samples=200):
+    """The pair of amino acids that separates best on the training organisms.
+
+    Searches every pair rather than assuming R and C: which pair wins is part
+    of what the test is checking.
+    """
+    proteins = [p for seqs in train_seqs.values() for p in seqs
+                if len(p) > HOLDOUT_LENGTH]
+    rng.shuffle(proteins)
+    chosen = proteins[:samples]
+
+    fragments = [p[rng.randrange(0, len(p) - HOLDOUT_LENGTH):][:HOLDOUT_LENGTH]
+                 for p in chosen]
+    controls = [generate_random_aa_sequence_from_dna(HOLDOUT_LENGTH) for _ in chosen]
+
+    best = None
+    for a, b in itertools.combinations(AA, 2):
+        pair = [a, b]
+        rate = hit_rate([subset_distance(f, reference, pair) for f in fragments],
+                        [subset_distance(c, reference, pair) for c in controls])
+        if best is None or rate > best[0]:
+            best = (rate, pair)
+    return best[1], best[0]
+
+
+def holdout_by_organism(real_seqs, rng, samples=200):
+    """For each organism: choose the amino acids on the other two, score on it.
+
+    The reference profile is rebuilt from the training organisms only. Pooling
+    all three would put the held-out organism inside the profile it is being
+    scored against, and the test would no longer be a test.
+    """
+    results = []
+    for held_out in real_seqs:
+        train_seqs = {name: seqs for name, seqs in real_seqs.items()
+                      if name != held_out}
+        reference = freqs("".join("".join(seqs) for seqs in train_seqs.values()))
+
+        pair, train_rate = best_pair(train_seqs, reference, rng, samples)
+
+        proteins = [p for p in real_seqs[held_out] if len(p) > HOLDOUT_LENGTH]
+        rng.shuffle(proteins)
+        chosen = proteins[:samples]
+        fragments = [p[rng.randrange(0, len(p) - HOLDOUT_LENGTH):][:HOLDOUT_LENGTH]
+                     for p in chosen]
+        controls = [generate_random_aa_sequence_from_dna(HOLDOUT_LENGTH)
+                    for _ in chosen]
+
+        test_rate = hit_rate(
+            [subset_distance(f, reference, pair) for f in fragments],
+            [subset_distance(c, reference, pair) for c in controls])
+
+        results.append((held_out, pair, train_rate, test_rate))
+    return results
+
+
+def print_holdout(results):
+    print(f"\nLeave-one-out: pair chosen on two organisms, scored on the third "
+          f"(fragments of {HOLDOUT_LENGTH}):\n")
+    print(f"{'held out':>10} {'pair':>8} {'on training':>13} {'on held out':>13}")
+    for held_out, pair, train_rate, test_rate in results:
+        print(f"{held_out:>10} {''.join(pair):>8} {train_rate:>13.3f} {test_rate:>13.3f}")
+
+
 def plot_discrimination(results):
-    """AUC against fragment length, one line per subset."""
+    """Hit rate against fragment length, one line per subset."""
     fig, ax = plt.subplots(figsize=(9, 5))
     colours = ['#d9613d', '#4a6fa5', '#2e8b6f']
     for (name, values), colour in zip(results.items(), colours):
@@ -138,7 +211,7 @@ def plot_discrimination(results):
     ax.text(FRAGMENT_LENGTHS[-1], 0.5, '  chance', va='center', fontsize=8, color='#707070')
     ax.set_xscale('log')
     ax.set_xlabel('Fragment length (residues)')
-    ax.set_ylabel('AUC: real vs random')
+    ax.set_ylabel('Hit rate: real vs random')
     ax.set_title('How well amino acid composition separates real from random')
     ax.yaxis.grid(True, color='#e5e5e5', linewidth=0.8)
     ax.set_axisbelow(True)
@@ -152,6 +225,9 @@ def plot_discrimination(results):
 
 def run():
     rng = random.Random(SAMPLE_SEED)
+    # The random controls are generated through the random module, so it needs
+    # seeding too, otherwise the reported numbers move on every run.
+    random.seed(SAMPLE_SEED)
 
     real_seqs = download_seqs()
     data_length = calculate_data_length(real_seqs)
@@ -169,6 +245,8 @@ def run():
     results = discrimination_by_length(proteins, distributions["Natural"], rng)
     print_discrimination(results)
     print_single_residues(proteins, distributions["Natural"], rng)
+
+    print_holdout(holdout_by_organism(real_seqs, rng))
 
     plot_discrimination(results)
     plt.show()

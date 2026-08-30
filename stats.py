@@ -148,3 +148,58 @@ def find_N(grid, ds):
             frac = (y0 - THRESHOLD) / (y0 - y1)   # fraction of the interval, 0..1
             return int(round(10 ** (x0 + frac * (x1 - x0))))
     return grid[-1]                      # did not stabilise within the range tested
+
+
+# ---------------------------------------------------------------------------
+# Convergence in number of sequences (the second axis of exercise 4b)
+# ---------------------------------------------------------------------------
+
+NUM_COUNT_STEPS = 12   # how many "number of sequences" values to try
+
+
+def sequence_counts(num_seqs):
+    """~NUM_COUNT_STEPS counts spaced on a log scale, from 1 up to num_seqs.
+    The last value is num_seqs, so the curve ends up using ALL the sequences."""
+    points = np.geomspace(1, num_seqs, NUM_COUNT_STEPS)
+    counts = []
+    for p in points:
+        count = int(round(p))
+        if count not in counts:   # skip duplicates introduced by rounding
+            counts.append(count)
+    return counts
+
+
+def smooth_count_curve(seqs, grid, final_distribution):
+    """Same idea as smooth_curve(), but the sample grows by whole sequences
+    instead of residue by residue: REPS shuffles of the order, averaged point
+    by point so the curve does not depend on which proteins came first."""
+    curves_per_rep = []
+    for rep in range(REPS):
+        shuffled = list(seqs)
+        random.shuffle(shuffled)
+
+        curve = []
+        for count in grid:
+            sample = "".join(shuffled[:count])   # the first `count` proteins
+            distance = distributions_distance(freqs(sample), final_distribution)
+            curve.append(distance)
+        curves_per_rep.append(curve)
+
+    return list(np.mean(curves_per_rep, axis=0))
+
+
+def count_convergence_curve(seqs):
+    """Grid of sequence counts and its curve (distance to the final
+    distribution) for a list of whole proteins.
+
+    The companion of convergence_curve(): that one grows the sample residue by
+    residue, this one adds whole proteins. Both axes are named in 4b, and they
+    are not the same question: proteins have very different lengths and a
+    composition of their own, so K proteins are worth less than the same
+    number of residues drawn at random.
+    """
+    seqs = list(seqs)
+    final_distribution = freqs(seqs)   # distribution using ALL the proteins
+    grid = sequence_counts(len(seqs))
+    curve = smooth_count_curve(seqs, grid, final_distribution)
+    return grid, curve

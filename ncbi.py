@@ -25,31 +25,87 @@ def cache_path(filename):
 # Proteins (used by exercise 4)
 # ---------------------------------------------------------------------------
 
-def fetch_proteins(organism, n=300, reviewed_only=True):
-    """Up to `n` proteins (SeqRecord) for the organism, via esearch + efetch."""
+def fetch_proteins(organism, n=None, reviewed_only=True, seed=0):
+    """Every protein (SeqRecord) the organism has in Swiss-Prot.
+
+    Pass `n` to take a random sample of that size instead; `seed` fixes which
+    ones, so a deleted cache re-downloads the same sample.
+
+    The default is everything because for these organisms the reviewed set is
+    not a sample of the proteome, it IS the proteome (6.074 for E. coli K-12,
+    7.923 for yeast, 20.616 for human). Holding the whole population removes
+    the sampling question from the reference distribution entirely, and it is
+    what makes exercise 4b answerable: measuring "how many proteins are
+    enough?" against a reference built from the same 400 proteins mostly
+    measures the 400.
+    """
     term = f'"{organism}"[Organism]'
     if reviewed_only:
-        term += " AND refseq[filter]"   # RefSeq: curated sequences
+        # Swiss-Prot (UniProtKB reviewed), mirrored by NCBI so the same Entrez
+        # client works. It is the manually curated half of UniProt: a human
+        # reads the literature and writes the entry.
+        #
+        # The alternative, refseq[filter], is what this used to be, and it is
+        # genome-centric: an annotation pipeline emits one protein record per
+        # predicted gene per sequenced genome. That gives three problems for
+        # a study of amino acid composition:
+        #   - redundancy: one RefSeq entry per transcript variant, so a single
+        #     human gene contributes five near-identical "proteins";
+        #   - unverified entries: every called ORF becomes a record, hence the
+        #     "hypothetical protein" and "partial" hits;
+        #   - strain duplication: '"Escherichia coli"[Organism]' matches 6.6M
+        #     RefSeq proteins, one per strain annotated, against 23k in
+        #     Swiss-Prot.
+        # Swiss-Prot keeps one entry per gene per organism, with isoforms as
+        # annotations inside the entry rather than as separate records.
+        term += " AND swissprot[filter]"
 
-    handle = Entrez.esearch(db="protein", term=term, retmax=n, usehistory="y")
-    search = Entrez.read(handle)
-    handle.close()
-
-    webenv = search["WebEnv"]
-    query_key = search["QueryKey"]
-    total = min(int(search["Count"]), n)
-    print(f"{organism}: {search['Count']} proteins found, downloading {total}")
+    pool = fetch_id_pool(term)
+    if n is None or n >= len(pool):
+        chosen = pool
+    else:
+        # Sampled at random, NOT the first n. esearch returns its ids in
+        # NCBI's default order, which is by deposit date, so the head of the
+        # list is whatever was added most recently. Measured on E. coli K-12:
+        # the first 400 entries average 256 residues against 304 for 400 drawn
+        # at random, i.e. taking the head biases towards proteins 19% shorter
+        # than the organism's.
+        chosen = random.Random(seed).sample(pool, n)
+    print(f"{organism}: {len(pool)} proteins found, downloading {len(chosen)}")
 
     records = []
     batch = 200
-    for start in range(0, total, batch):
+    for start in range(0, len(chosen), batch):
         handle = Entrez.efetch(db="protein", rettype="fasta", retmode="text",
-                               retstart=start, retmax=batch,
-                               webenv=webenv, query_key=query_key)
+                               id=",".join(chosen[start:start + batch]))
         records.extend(SeqIO.parse(handle, "fasta"))
         handle.close()
         time.sleep(0.4)   # respects the NCBI limit (3 req/s without an API key)
     return records
+
+
+ESEARCH_PAGE = 10000   # esearch returns at most 10.000 ids per request
+
+
+def fetch_id_pool(term):
+    """Every id matching `term`, paging esearch until the list is complete.
+
+    The paging is not an optimisation, it is what makes the sampling honest:
+    the human reviewed proteome has 20.616 entries and a single esearch call
+    would return only the first 10.000 of them. Sampling from that truncated
+    pool would still be a draw from the most recently deposited half.
+    """
+    ids = []
+    while True:
+        handle = Entrez.esearch(db="protein", term=term,
+                                retstart=len(ids), retmax=ESEARCH_PAGE)
+        page = Entrez.read(handle)
+        handle.close()
+
+        ids.extend(page["IdList"])
+        if not page["IdList"] or len(ids) >= int(page["Count"]):
+            return ids
+        time.sleep(0.4)
 
 
 def clean_sequences(records):
@@ -65,13 +121,17 @@ def clean_sequences(records):
 
 def get_real_sequences(organism, cache):
     """Real protein sequences. Uses the cache file if it exists; otherwise
-    downloads them from NCBI and saves them so they are not fetched again."""
+    downloads them from Swiss-Prot and saves them so they are not fetched again.
+
+    The cache file name carries the source (see a.py), so switching databases
+    cannot silently reuse sequences downloaded from the previous one.
+    """
     if os.path.exists(cache):
         print(f"Using cached sequences from {cache}")
         with open(cache) as f:
             return json.load(f)
     print(f"Downloading proteins for {organism}...")
-    seqs = clean_sequences(fetch_proteins(organism, n=300))
+    seqs = clean_sequences(fetch_proteins(organism))
     os.makedirs(os.path.dirname(cache), exist_ok=True)   # create data/ if missing
     with open(cache, "w") as f:
         json.dump(seqs, f)

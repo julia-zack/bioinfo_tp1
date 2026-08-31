@@ -148,6 +148,45 @@ NUCLEOTIDE_CACHE = cache_path("ncbi_sample.fasta")
 NUCLEOTIDE_QUERY = '"Homo sapiens"[Organism] AND biomol_mrna[PROP] AND 500:5000[SLEN]'
 
 
+CDS_CACHE = cache_path("mrna_cds.json")
+
+
+def fetch_cds_annotations(accessions, cache=CDS_CACHE):
+    """The annotated CDS of each transcript: {accession: [start, end]}.
+
+    RefSeq transcripts carry a CDS feature with the coordinates of the real
+    coding region, which is the ground truth an ORF detector should recover.
+    Coordinates are 0-based and half-open, like Python slices.
+
+    Transcripts without exactly one CDS on the forward strand are skipped: an
+    mRNA is already the sense strand, so anything else is an oddity that would
+    only muddy the comparison.
+    """
+    if os.path.exists(cache):
+        with open(cache) as f:
+            return json.load(f)
+
+    annotations = {}
+    batch = 20
+    for start in range(0, len(accessions), batch):
+        chunk = accessions[start:start + batch]
+        handle = Entrez.efetch(db="nuccore", id=",".join(chunk),
+                               rettype="gb", retmode="text")
+        for record in SeqIO.parse(handle, "genbank"):
+            cds = [f for f in record.features if f.type == "CDS"]
+            if len(cds) == 1 and cds[0].location.strand == 1:
+                annotations[record.id] = [int(cds[0].location.start),
+                                          int(cds[0].location.end)]
+        handle.close()
+        print(f"  CDS for {len(annotations)}/{len(accessions)}")
+        time.sleep(0.4)
+
+    os.makedirs(os.path.dirname(cache), exist_ok=True)
+    with open(cache, "w") as f:
+        json.dump(annotations, f)
+    return annotations
+
+
 def fetch_random_records(n=100, query=NUCLEOTIDE_QUERY,
                          cache=NUCLEOTIDE_CACHE, seed=None):
     """Download n sequences sampled at random from the results of a query.

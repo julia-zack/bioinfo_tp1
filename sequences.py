@@ -210,6 +210,51 @@ def get_orf_sizes(seq):
     return orf_sizes
 
 
+def find_orfs(nt_seq, min_length=1):
+    """Every ORF in the six reading frames, as dictionaries.
+
+    Each ORF carries its frame label, its position in the original sequence,
+    its length in amino acids and its translated sequence. get_orf_sizes()
+    answers "how long", this answers "which one and where", which is what a
+    detector needs in order to score an ORF and report it.
+
+    Positions are given on the forward strand, so an ORF found on the reverse
+    strand still points at the region of `nt_seq` it came from.
+    """
+    orfs = []
+    total = len(nt_seq)
+    frames = get_six_frames_from_nt_seq(nt_seq)
+
+    for label, aa_seq in frames.items():
+        offset = int(label[1]) - 1          # 0, 1 or 2 nucleotides into the strand
+        reverse = label.startswith('-')
+
+        residue_start = None
+        for i, residue in enumerate(aa_seq):
+            if residue == 'M' and residue_start is None:
+                residue_start = i
+            elif residue == '*' and residue_start is not None:
+                peptide = aa_seq[residue_start:i]      # without the stop
+                if len(peptide) >= min_length:
+                    # back to nucleotide coordinates on the strand that was read
+                    strand_start = offset + residue_start * 3
+                    strand_end = offset + (i + 1) * 3   # includes the stop codon
+                    if reverse:
+                        start, end = total - strand_end, total - strand_start
+                    else:
+                        start, end = strand_start, strand_end
+                    orfs.append({
+                        'frame': label,
+                        'start': start,
+                        'end': end,
+                        'length': len(peptide),
+                        'protein': peptide,
+                    })
+                residue_start = None
+
+    return orfs
+
+
 def collect_orf_sizes(nt_seq):
     """Every ORF from the six reading frames, in a single list."""
     frames = get_six_frames_from_nt_seq(nt_seq)

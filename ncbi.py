@@ -156,11 +156,8 @@ def fetch_cds_annotations(accessions, cache=CDS_CACHE):
 
     RefSeq transcripts carry a CDS feature with the coordinates of the real
     coding region, which is the ground truth an ORF detector should recover.
-    Coordinates are 0-based and half-open, like Python slices.
-
-    Transcripts without exactly one CDS on the forward strand are skipped: an
-    mRNA is already the sense strand, so anything else is an oddity that would
-    only muddy the comparison.
+    Coordinates are 0-based and half-open, like Python slices. Only
+    transcripts with exactly one CDS on the forward strand are kept.
     """
     if os.path.exists(cache):
         with open(cache) as f:

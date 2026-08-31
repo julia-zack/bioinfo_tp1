@@ -123,11 +123,9 @@ def smooth_curve(res_list, grid, final_distribution):
 def convergence_curve(res, reference=None):
     """Grid of sample sizes and its curve for one residue source.
 
-    `reference` is the distribution the sample is compared against: the target
-    being estimated. Pass the organism's whole proteome, or the exact
-    distribution of the null model, so the sample is measured against
-    something independent of itself. Defaults to the source's own final
-    distribution.
+    `reference` is the target being estimated: the organism's whole proteome,
+    or the null model's exact distribution. Defaults to the source's own
+    final distribution.
     """
     res_list = list(res)              # list of residues, so it can be shuffled
     final_distribution = reference if reference is not None else freqs(res)
@@ -197,11 +195,8 @@ def smooth_count_curve(seqs, grid, final_distribution):
 def count_convergence_curve(seqs, reference=None):
     """Grid of sequence counts and its curve for a list of whole proteins.
 
-    The companion of convergence_curve(): that one grows the sample residue by
-    residue, this one adds whole proteins. Both axes are named in 4b, and they
-    are not the same question: proteins have very different lengths and a
-    composition of their own, so K proteins are worth less than the same
-    number of residues drawn at random.
+    The companion of convergence_curve(), which grows the sample residue by
+    residue. Both axes are named in 4b.
     """
     seqs = list(seqs)
     final_distribution = reference if reference is not None else freqs(seqs)

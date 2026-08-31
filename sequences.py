@@ -79,12 +79,8 @@ def expected_aa_frequencies(gc=0.5):
     """Exact amino acid frequencies of the random-DNA null model.
 
     Each codon's probability is the product of its three nucleotide
-    probabilities; the codons are then grouped by the amino acid they encode,
-    stops are dropped and the rest renormalised. With gc=0.5 this reduces to
-    (number of codons)/61.
-
-    Sampling with generate_random_aa_sequence_from_dna() converges to this, so
-    use this one wherever the null model is a reference rather than a sample.
+    probabilities, grouped by amino acid, stops dropped, renormalised. With
+    gc=0.5 it reduces to (number of codons)/61.
     """
     base_prob = {'A': (1 - gc) / 2, 'T': (1 - gc) / 2, 'C': gc / 2, 'G': gc / 2}
 
@@ -211,15 +207,10 @@ def get_orf_sizes(seq):
 
 
 def find_orfs(nt_seq, min_length=1):
-    """Every ORF in the six reading frames, as dictionaries.
+    """Every ORF in the six frames, with frame, position, length and protein.
 
-    Each ORF carries its frame label, its position in the original sequence,
-    its length in amino acids and its translated sequence. get_orf_sizes()
-    answers "how long", this answers "which one and where", which is what a
-    detector needs in order to score an ORF and report it.
-
-    Positions are given on the forward strand, so an ORF found on the reverse
-    strand still points at the region of `nt_seq` it came from.
+    Positions are on the forward strand, so a reverse-strand ORF still points
+    at the region of `nt_seq` it came from.
     """
     orfs = []
     total = len(nt_seq)

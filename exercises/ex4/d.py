@@ -139,8 +139,7 @@ HOLDOUT_LENGTH = 250   # fragment length used for the held-out test
 def best_pair(train_seqs, reference, rng, samples=200):
     """The pair of amino acids that separates best on the training organisms.
 
-    Searches every pair rather than assuming R and C: which pair wins is part
-    of what the test is checking.
+    Searches all 190 pairs; which one wins is part of what the test checks.
     """
     proteins = [p for seqs in train_seqs.values() for p in seqs
                 if len(p) > HOLDOUT_LENGTH]
@@ -164,9 +163,8 @@ def best_pair(train_seqs, reference, rng, samples=200):
 def holdout_by_organism(real_seqs, rng, samples=200):
     """For each organism: choose the amino acids on the other two, score on it.
 
-    The reference profile is rebuilt from the training organisms only. Pooling
-    all three would put the held-out organism inside the profile it is being
-    scored against, and the test would no longer be a test.
+    The reference profile is rebuilt from the two training organisms, so the
+    held-out one stays outside both the choice and the profile.
     """
     results = []
     for held_out in real_seqs:
@@ -232,7 +230,7 @@ def run():
     real_seqs = download_seqs()
     data_length = calculate_data_length(real_seqs)
     sources = build_sources(real_seqs, data_length)
-    natural = build_natural_source(sources, real_seqs)
+    natural = build_natural_source(real_seqs, data_length)
 
     distributions = {name: freqs(seq) for name, seq in sources.items()}
     distributions["Natural"] = freqs(natural)

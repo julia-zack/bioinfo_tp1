@@ -61,9 +61,11 @@ SAMPLE_SEED = 0
 
 def run():
     real_seqs = download_seqs()
+    # The smallest proteome sizes the random source and each organism's
+    # share of the pooled profile.
     data_length = calculate_data_length(real_seqs)
     sources = build_sources(real_seqs, data_length)
-    natural = build_natural_source(sources, real_seqs)
+    natural = build_natural_source(real_seqs, data_length)
 
     print("\nSources compared:")
     for name, seq in sources.items():
@@ -106,42 +108,30 @@ def calculate_data_length(real_seqs):
     return min(real_totals)
 
 
-def build_sources(real_seqs, length):
-    """Build, for each source, a string of EXACTLY `length` residues: the
-    random control, and the real ones truncated to `length`.
+def build_sources(real_seqs, random_length):
+    """Every organism's whole proteome, plus a random source of `random_length`.
 
-    The real lists arrive shuffled from download_seqs(), so truncating gives
-    a random sample of the organism.
     """
-    sources = {"Random DNA": generate_random_aa_sequence_from_dna(length)}
+    sources = {"Random DNA": generate_random_aa_sequence_from_dna(random_length)}
     for name, seqs in real_seqs.items():
-        full_sequence = "".join(seqs)
-        sources[name] = full_sequence[:length]
+        sources[name] = "".join(seqs)
     return sources
 
 
-def build_natural_source(sources, real_seqs):
-    """One pooled "natural" string: the organism sources concatenated.
+def build_natural_source(real_seqs, per_organism):
+    """One pooled "natural" string, `per_organism` residues from each.
 
-    4e needs a single reference distribution to score an ORF against, and
-    scoring against three organisms separately is not an option. Each organism
-    contributes the same number of residues (rather than an amount
-    proportional to its proteome), so none of them dominates the profile.
-
-    Unlike the sources being compared, this one uses every residue available:
-    it is a reference, not a competitor, so a less noisy estimate is free.
+    4e scores an ORF against a single reference distribution, and this is it.
+    Equal parts keep the largest proteome from dominating the profile.
     """
-    return "".join(sources[name] for name in real_seqs)
+    return "".join("".join(seqs)[:per_organism] for seqs in real_seqs.values())
 
 
 def plot_distributions(sources):
     """Figure 1: amino acid distribution of every source, using all the data.
 
-    This is the comparison 4a asks for: the random control against each real
-    organism. Sorted by mean frequency across the organisms, so the control
-    can be read against them residue by residue.
-
-    The pooled natural profile is not drawn here; it has its own figure.
+    Sorted by mean frequency across the organisms, so the random source can be
+    read against them residue by residue.
     """
     names = list(sources)
     distributions = {name: freqs(seq) for name, seq in sources.items()}

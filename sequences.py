@@ -53,13 +53,12 @@ def generate_weighted_aa_sequence(length, aa_weights):
     return ''.join(random.choices(AA, weights=aa_weights, k=length))
 
 
-def generate_random_nt_sequence(length, gc=0.5):
-    """Random DNA sequence with the requested GC content (gc=0.5 => uniform)."""
-    weights = [(1 - gc) / 2, (1 - gc) / 2, gc / 2, gc / 2]
-    return ''.join(random.choices(NUCLEOTIDES, weights=weights, k=length))
+def generate_random_nt_sequence(length):
+    """Random DNA sequence, each base equally likely."""
+    return ''.join(random.choices(NUCLEOTIDES, k=length))
 
 
-def generate_random_aa_sequence_from_dna(length, gc=0.5):
+def generate_random_aa_sequence_from_dna(length):
     """Random protein obtained by translating random DNA.
 
     The residues carry no information, but they follow the genetic code, so
@@ -70,19 +69,18 @@ def generate_random_aa_sequence_from_dna(length, gc=0.5):
     while len(residues) < length:
         # 3 nt per codon, plus a margin for the ~4.7% that translate to a stop
         missing = length - len(residues)
-        nt_seq = generate_random_nt_sequence(int(missing * 3 * 1.2) + 3, gc=gc)
+        nt_seq = generate_random_nt_sequence(int(missing * 3 * 1.2) + 3)
         residues += get_aa_seq_from_nt_seq(nt_seq).replace('*', '')
     return residues[:length]
 
 
-def expected_aa_frequencies(gc=0.5):
+def expected_aa_frequencies():
     """Exact amino acid frequencies of the random-DNA null model.
 
-    Each codon's probability is the product of its three nucleotide
-    probabilities, grouped by amino acid, stops dropped, renormalised. With
-    gc=0.5 it reduces to (number of codons)/61.
+    With every base equally likely each codon is equally likely, so this is
+    (number of codons)/61 per amino acid.
     """
-    base_prob = {'A': (1 - gc) / 2, 'T': (1 - gc) / 2, 'C': gc / 2, 'G': gc / 2}
+    base_prob = {base: 0.25 for base in NUCLEOTIDES}
 
     frequencies = {}
     for codon, residue in CODON_TABLE.items():
@@ -95,11 +93,10 @@ def expected_aa_frequencies(gc=0.5):
     return {residue: p / total for residue, p in frequencies.items()}
 
 
-def gc_fraction(nt_seq):
-    """Fraction of G and C, ignoring ambiguity codes (N, R, Y, ...)."""
-    counts = {base: str(nt_seq).upper().count(base) for base in 'ACGT'}
-    total = sum(counts.values())
-    return (counts['G'] + counts['C']) / total if total else 0.0
+def stop_codon_probability():
+    """Probability that a random codon is a stop: 3 of the 64 codons."""
+    stops = sum(1 for residue in CODON_TABLE.values() if residue == '*')
+    return stops / len(CODON_TABLE)
 
 
 # ---------------------------------------------------------------------------

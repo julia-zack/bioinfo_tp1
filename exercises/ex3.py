@@ -2,16 +2,12 @@
 
 3b) Bajar una secuencia de GenBank y mostrar sus datos.
 3c) Bajar 100 secuencias al azar y comparar la distribucion de tamanos de ORF
-    contra un control aleatorio de igual largo y contenido GC.
+    contra un control aleatorio del mismo largo.
 """
 
 from Bio import Entrez, SeqIO
 
-from sequences import (
-    collect_orf_sizes,
-    gc_fraction,
-    generate_random_nt_sequence,
-)
+from sequences import collect_orf_sizes, generate_random_nt_sequence
 from ncbi import fetch_random_records
 from plots import plot_orf_size_comparison
 
@@ -37,9 +33,8 @@ def c():
     control_sizes = []
     for record in records:
         real_sizes.extend(collect_orf_sizes(record.seq))
-        # Control: same length and same %GC as the real sequence, but random.
-        control = generate_random_nt_sequence(len(record.seq),
-                                              gc=gc_fraction(record.seq))
+        # Control: same length as the real sequence, bases drawn at random.
+        control = generate_random_nt_sequence(len(record.seq))
         control_sizes.extend(collect_orf_sizes(control))
 
     for label, sizes in (("real", real_sizes), ("control", control_sizes)):
@@ -51,4 +46,4 @@ def c():
 
     plot_orf_size_comparison(
         real_sizes, control_sizes,
-        f'ORF sizes: {len(records)} NCBI sequences vs random control (same length and %GC)')
+        f'ORF sizes: {len(records)} NCBI sequences vs random control of the same length')

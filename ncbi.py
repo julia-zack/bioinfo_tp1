@@ -148,6 +148,25 @@ NUCLEOTIDE_CACHE = cache_path("ncbi_sample.fasta")
 NUCLEOTIDE_QUERY = '"Homo sapiens"[Organism] AND biomol_mrna[PROP] AND 500:5000[SLEN]'
 
 
+def fetch_genbank_record(accession):
+    """One GenBank record, cached as data/<accession>.gb.
+
+    GenBank rather than FASTA because the annotations travel with the
+    sequence, and the CDS feature is the ground truth a detector is checked
+    against.
+    """
+    path = cache_path(f"{accession}.gb")
+    if not os.path.exists(path):
+        print(f"Downloading {accession}...")
+        handle = Entrez.efetch(db="nuccore", id=accession,
+                               rettype="gb", retmode="text")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            f.write(handle.read())
+        handle.close()
+    return SeqIO.read(path, "genbank")
+
+
 CDS_CACHE = cache_path("mrna_cds.json")
 
 

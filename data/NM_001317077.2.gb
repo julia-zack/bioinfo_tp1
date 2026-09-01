@@ -1,0 +1,258 @@
+LOCUS       NM_001317077            1941 bp    mRNA    linear   PRI 09-APR-2026
+DEFINITION  Homo sapiens chromatin target of PRMT1 (CHTOP), transcript variant
+            4, mRNA.
+ACCESSION   NM_001317077
+VERSION     NM_001317077.2
+KEYWORDS    RefSeq.
+SOURCE      Homo sapiens (human)
+  ORGANISM  Homo sapiens
+            Eukaryota; Metazoa; Chordata; Craniata; Vertebrata; Euteleostomi;
+            Mammalia; Eutheria; Euarchontoglires; Primates; Haplorrhini;
+            Catarrhini; Hominidae; Homo.
+REFERENCE   1  (bases 1 to 1941)
+  AUTHORS   Schaffer,L.V., Hu,M., Qian,G., Moon,K.M., Pal,A., Soni,N.,
+            Latham,A.P., Pontano Vaites,L., Tsai,D., Mattson,N.M., Licon,K.,
+            Bachelder,R., Cesnik,A., Gaur,I., Le,T., Leineweber,W., Palar,A.,
+            Pulido,E., Qin,Y., Zhao,X., Churas,C., Lenkiewicz,J., Chen,J.,
+            Ono,K., Pratt,D., Zage,P., Echeverria,I., Sali,A., Harper,J.W.,
+            Gygi,S.P., Foster,L.J., Huttlin,E.L., Lundberg,E. and Ideker,T.
+  TITLE     Multimodal cell maps as a foundation for structural and functional
+            genomics
+  JOURNAL   Nature 642 (8066), 222-231 (2025)
+   PUBMED   40205054
+  REMARK    Erratum:[Nature. 2025 Oct;646(8086):E16. doi:
+            10.1038/s41586-025-09648-x. PMID: 41039152]
+REFERENCE   2  (bases 1 to 1941)
+  AUTHORS   Pacheco-Fiallos,B., Vorlander,M.K., Riabov-Bassat,D., Fin,L.,
+            O'Reilly,F.J., Ayala,F.I., Schellhaas,U., Rappsilber,J. and
+            Plaschka,C.
+  TITLE     mRNA recognition and packaging by the human transcription-export
+            complex
+  JOURNAL   Nature 616 (7958), 828-835 (2023)
+   PUBMED   37020021
+REFERENCE   3  (bases 1 to 1941)
+  AUTHORS   Maron,M.I., Casill,A.D., Gupta,V., Roth,J.S., Sidoli,S.,
+            Query,C.C., Gamble,M.J. and Shechter,D.
+  TITLE     Type I and II PRMTs inversely regulate post-transcriptional intron
+            detention through Sm and CHTOP methylation
+  JOURNAL   Elife 11, e72867 (2022)
+   PUBMED   34984976
+  REMARK    GeneRIF: Type I and II PRMTs inversely regulate
+            post-transcriptional intron detention through Sm and CHTOP
+            methylation.
+REFERENCE   4  (bases 1 to 1941)
+  AUTHORS   Huttlin,E.L., Bruckner,R.J., Navarrete-Perea,J., Cannon,J.R.,
+            Baltier,K., Gebreab,F., Gygi,M.P., Thornock,A., Zarraga,G., Tam,S.,
+            Szpyt,J., Gassaway,B.M., Panov,A., Parzen,H., Fu,S., Golbazi,A.,
+            Maenpaa,E., Stricker,K., Guha Thakurta,S., Zhang,T., Rad,R.,
+            Pan,J., Nusinow,D.P., Paulo,J.A., Schweppe,D.K., Vaites,L.P.,
+            Harper,J.W. and Gygi,S.P.
+  TITLE     Dual proteome-scale networks reveal cell-specific remodeling of the
+            human interactome
+  JOURNAL   Cell 184 (11), 3022-3040 (2021)
+   PUBMED   33961781
+REFERENCE   5  (bases 1 to 1941)
+  AUTHORS   Puhringer,T., Hohmann,U., Fin,L., Pacheco-Fiallos,B.,
+            Schellhaas,U., Brennecke,J. and Plaschka,C.
+  TITLE     Structure of the human core transcription-export complex reveals a
+            hub for multivalent interactions
+  JOURNAL   Elife 9, e61503 (2020)
+   PUBMED   33191911
+REFERENCE   6  (bases 1 to 1941)
+  AUTHORS   Castello,A., Fischer,B., Eichelbaum,K., Horos,R., Beckmann,B.M.,
+            Strein,C., Davey,N.E., Humphreys,D.T., Preiss,T., Steinmetz,L.M.,
+            Krijgsveld,J. and Hentze,M.W.
+  TITLE     Insights into RNA biology from an atlas of mammalian mRNA-binding
+            proteins
+  JOURNAL   Cell 149 (6), 1393-1406 (2012)
+   PUBMED   22658674
+REFERENCE   7  (bases 1 to 1941)
+  AUTHORS   van Dijk,T.B., Gillemans,N., Pourfarzad,F., van Lom,K., von
+            Lindern,M., Grosveld,F. and Philipsen,S.
+  TITLE     Fetal globin expression is regulated by Friend of Prmt1
+  JOURNAL   Blood 116 (20), 4349-4352 (2010)
+   PUBMED   20688955
+  REMARK    GeneRIF: The recently identified chromatin factor Friend of Prmt1
+            (FOP) is a critical modulator of gamma-globin gene expression.
+REFERENCE   8  (bases 1 to 1941)
+  AUTHORS   van Dijk,T.B., Gillemans,N., Stein,C., Fanis,P., Demmers,J., van de
+            Corput,M., Essers,J., Grosveld,F., Bauer,U.M. and Philipsen,S.
+  TITLE     Friend of Prmt1, a novel chromatin target of protein arginine
+            methyltransferases
+  JOURNAL   Mol Cell Biol 30 (1), 260-272 (2010)
+   PUBMED   19858291
+  REMARK    GeneRIF: Fop is tightly associated with chromatin, and that it is
+            modified by both asymmetric and symmetric arginine methylation in
+            vivo. Fop plays an important role in the ligand-dependent
+            activation of estrogen receptor target genes, including TFF1 (pS2).
+REFERENCE   9  (bases 1 to 1941)
+  AUTHORS   Zullo,A.J., Michaud,M., Zhang,W. and Grusby,M.J.
+  TITLE     Identification of the small protein rich in arginine and glycine
+            (SRAG): a newly identified nucleolar protein that can regulate cell
+            proliferation
+  JOURNAL   J Biol Chem 284 (18), 12504-12511 (2009)
+   PUBMED   19254951
+  REMARK    GeneRIF: The reduction in SRAG protein that occurs in proliferating
+            cells was mapped with inhibitors to the G(2)/M phase of the cell
+            cycle. As expected, the overexpression of SRAG reduced the
+            percentage of cells in the G(2)/M phase and increased cell death.
+REFERENCE   10 (bases 1 to 1941)
+  AUTHORS   Lehner,B., Semple,J.I., Brown,S.E., Counsell,D., Campbell,R.D. and
+            Sanderson,C.M.
+  TITLE     Analysis of a high-throughput yeast two-hybrid system and its use
+            to predict the function of intracellular proteins encoded within
+            the human MHC class III region
+  JOURNAL   Genomics 83 (1), 153-167 (2004)
+   PUBMED   14667819
+COMMENT     REVIEWED REFSEQ: This record has been curated by NCBI staff. The
+            reference sequence was derived from AF261137.1, BC108721.1 and
+            AI929184.1.
+            
+            On Aug 13, 2020 this sequence version replaced NM_001317077.1.
+            
+            Summary: This gene encodes a small nuclear protein that is
+            characterized by an arginine and glycine rich region. This protein
+            may have an important role in the regulation of fetal globin gene
+            expression and in the activation of estrogen-responsive genes. A
+            recent study reported that this protein binds
+            5-hydroxymethylcytosine (5hmC) and associates with an arginine
+            methyltransferase complex (methylosome), which promotes methylation
+            of arginine 3 of histone H4 (H4R3) and activation of genes involved
+            in glioblastomagenesis. Alternatively spliced transcript variants
+            encoding different isoforms have been described for this gene.
+            [provided by RefSeq, Nov 2015].
+            
+            Transcript Variant: This variant (4) lacks an in-frame coding exon
+            in the 3' region compared to variant 1. The resulting isoform (4,
+            also known as SRAG-5) is shorter, lacking an internal protein
+            segment compared to isoform 1.
+            
+            Publication Note:  This RefSeq record includes a subset of the
+            publications that are available for this gene. Please see the Gene
+            record to access additional publications.
+            
+            ##Evidence-Data-START##
+            Transcript exon combination :: SRR3476690.627530.1,
+                                           SRR1803611.9390.1 [ECO:0000332]
+            ##Evidence-Data-END##
+            COMPLETENESS: complete on the 3' end.
+PRIMARY     REFSEQ_SPAN         PRIMARY_IDENTIFIER PRIMARY_SPAN        COMP
+            1-698               AF261137.1         18-715
+            699-1138            AF261137.1         854-1293
+            1139-1924           BC108721.1         999-1784
+            1925-1941           AI929184.1         10-26               c
+FEATURES             Location/Qualifiers
+     source          1..1941
+                     /organism="Homo sapiens"
+                     /mol_type="mRNA"
+                     /db_xref="taxon:9606"
+                     /chromosome="1"
+                     /map="1q21.3"
+     gene            1..1941
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="chromatin target of PRMT1"
+                     /db_xref="GeneID:26097"
+                     /db_xref="HGNC:HGNC:24511"
+                     /db_xref="MIM:614206"
+     exon            1..278
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /inference="alignment:Splign:2.1.0"
+     misc_feature    170..172
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="upstream in-frame stop codon"
+     exon            279..360
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /inference="alignment:Splign:2.1.0"
+     CDS             296..904
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="isoform 4 is encoded by transcript variant 4; small
+                     protein rich in arginine and glycine; friend of PRMT1
+                     protein"
+                     /codon_start=1
+                     /product="chromatin target of PRMT1 protein isoform 4"
+                     /protein_id="NP_001304006.1"
+                     /db_xref="CCDS:CCDS81380.1"
+                     /db_xref="GeneID:26097"
+                     /db_xref="HGNC:HGNC:24511"
+                     /db_xref="MIM:614206"
+                     /translation="MAAQSAPKVVLKSTTKMSLNERFTNMLKNKQPTPVNIRASMQQQ
+                     QQLASARNRRLAQQMENRPSVQAALKLKQSLKQRLGKSNIQARLGRPIGALARGAIGG
+                     RGLPIIQRGLPRGGLRGGRATRTLLRGGMSLRGRGMIGRGRGGFGGRGRGRGRGRGAL
+                     ARPVLTKEQLDNQLDAYMSKTKGHLDAELDAYMAQTDPETND"
+     exon            361..514
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /inference="alignment:Splign:2.1.0"
+     exon            515..698
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /inference="alignment:Splign:2.1.0"
+     exon            699..1941
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /inference="alignment:Splign:2.1.0"
+     polyA_site      1106
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="major polyA site"
+     regulatory      1919..1924
+                     /regulatory_class="polyA_signal_sequence"
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="hexamer: AACAAA"
+     polyA_site      1941
+                     /gene="CHTOP"
+                     /gene_synonym="C10orf77; C1orf77; FL-SRAG; FOP; pp7704;
+                     SRAG; SRAG-3; SRAG-5"
+                     /note="major polyA site"
+ORIGIN      
+        1 gtggcggcca ttttgttttg gacaccgagc aggagctggc ggccgctgca gacgaaaggc
+       61 aggaaagggc aggccgggtg agcagacgga tcggccgact agacagccaa ccagcaacaa
+      121 cgaactgagc tcgcatacta ccgcttacgc atctaaccaa ccgcccatct agctaacccg
+      181 agcccctcca ccgtcaactc aggttcggcc ggtccccggc ccgcctgccg gagccgtggt
+      241 ggcagccccg ggaggagcac tggcgtctgt ttccttcgat tctcgggatt cgaagatggc
+      301 tgcacagtca gcgccgaaag ttgtgctaaa aagcaccacc aagatgtctc taaatgagcg
+      361 ctttactaat atgctgaaga acaaacagcc gacgccagtg aatattcggg cttcgatgca
+      421 gcaacaacag cagctagcca gtgccagaaa cagaagactg gcccagcaga tggagaatag
+      481 accctctgtc caggcagcat taaaacttaa gcagagctta aagcagcgcc tgggtaagag
+      541 taacatccag gcacggttag gccgacccat aggggccctg gccaggggag caatcggagg
+      601 acgaggccta cccataatcc agagaggctt gcccagagga ggactacgtg ggggacgtgc
+      661 caccagaacc ctacttaggg gcgggatgtc actccgaggt cggggtatga taggtcgggg
+      721 aagagggggc tttggaggcc gaggccgagg ccgtggacga gggagaggtg cccttgctcg
+      781 ccctgtattg accaaggagc agctggacaa ccaattggat gcatatatgt cgaaaacaaa
+      841 aggacacctg gatgctgagt tggatgccta catggcgcag acagatcccg aaaccaatga
+      901 ttgaagcctg cccatcctcc catgagagac tcttgttagt caacacatct gtaaataacc
+      961 ttgagataac agatgagaag aaatctgatt gatgctggat ggacctatca caataggctg
+     1021 tggacttact tgccaccagc ttgtgcattt agtgtgttcc ttttactttt tgatactgtg
+     1081 ttgtatgaaa cccttttgtc ctttgatttg gttttttgtt tttgtttttt taggggggag
+     1141 ggggggtttc ccctcctttg cccagacttc tctttgaaca caaatgcatt agccttgtgg
+     1201 ctagaacacc ctcttcctac ctctgtctcc cctcacttgt catatgctct gacatgctaa
+     1261 catttctttt gttcatccct gttgccccca cagaaacatc ccagaaaaac cggtcagtgt
+     1321 tccttcctcc ctgatcctta ggtttctgaa atagggttct gttacatcct cttcgatagc
+     1381 ctgtttaaaa tgtttagaag gtctggagct caaaaatgcg ttcttccaca ttgataattt
+     1441 agtaaactga gaacattgac atcactacag ggcagcataa gaggttgctt acatgtggta
+     1501 gcagctctgg tttgattcaa gttgctacca tgtacattga cagcacatat accataacca
+     1561 gcgtgttggg ttgaattgca ctttctacct ttgtatgaga tttacagact ttccttctgg
+     1621 gtttgtatca tgaccagagg ggtactatag ggttggttta tactgcaata tagaggatca
+     1681 gaagccattt gatttggtag gtgtgtcaga agggagaatg atggcagacg aactgctgga
+     1741 agaggtcaga agatagccat gctaaaatgc aattatatcc tcatgtttat cccaaactaa
+     1801 tcttggactt ttccactcat tagctttgtt ttgcccttgt ttcccttgaa ggtttaagtt
+     1861 caaccatatt ctgtcaactg ttcagtttca gtggaatctt gtatttctgg ttcattataa
+     1921 caaactgttc gcttaaatcc a
+//
+

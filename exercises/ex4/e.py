@@ -51,6 +51,7 @@ learnt from the same Swiss-Prot proteins 4a uses, cached in data/.
 """
 
 import math
+import random
 import statistics
 
 from sequences import (
@@ -72,6 +73,9 @@ PRIOR_CODING = 0.5
 # Transcript used when run() is called without arguments: a real human mRNA
 # whose annotated CDS is the ground truth for (v).
 DEMO_ACCESSION = "NM_001317077.2"
+
+# Fixes the random DNA of the negative control, so the run is reproducible.
+NEGATIVE_CONTROL_SEED = 0
 
 FRAME_ORDER = ['+1', '+2', '+3', '-1', '-2', '-3']
 
@@ -345,15 +349,19 @@ def positive_controls(scorer):
         print(f"  {name:<42} {orf['length']:>7} {orf['probability']:>8.3f}")
 
 
-def negative_control(length, scorer):
+def negative_control(length, scorer, seed=NEGATIVE_CONTROL_SEED):
     """(v-b) NEGATIVE control: random DNA should only hold short, low-P ORFs.
 
-    The sequence is not seeded, so it changes every run. Some runs turn up a long
-    ORF that scores high, which is worth watching: length on its own can be
-    fooled, and composition is what pulls it back down.
+    `seed` fixes the sequence so the run is reproducible; pass None to draw a
+    fresh one. One run is thin evidence either way, since a lucky long ORF can
+    score above 0.5: length on its own can be fooled, and composition is what
+    pulls it back down.
     """
+    if seed is not None:
+        random.seed(seed)
     dna = generate_random_nt_sequence(length)
-    print(f"\n(v-b) NEGATIVE control: {length} nt of random DNA")
+    label = f"seed {seed}" if seed is not None else "unseeded"
+    print(f"\n(v-b) NEGATIVE control: {length} nt of random DNA ({label})")
     print_orf_table(score_sequence(dna, scorer), top=3)
 
 

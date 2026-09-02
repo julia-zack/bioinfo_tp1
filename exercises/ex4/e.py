@@ -73,6 +73,10 @@ PRIOR_CODING = 0.5
 # whose annotated CDS is the ground truth for (v).
 DEMO_ACCESSION = "NM_001317077.2"
 
+FRAME_ORDER = ['+1', '+2', '+3', '-1', '-2', '-3']
+
+PER_LINE = 5   # amino acids per line when printing a distribution
+
 
 # ===========================================================================
 # Basic maths
@@ -230,6 +234,47 @@ def score_sequence(dna, scorer):
     return orfs
 
 
+def group_by_frame(orfs):
+    """(ii) The ORFs split by reading frame, longest first within each."""
+    grouped = {label: [] for label in FRAME_ORDER}
+    for orf in orfs:
+        grouped[orf['frame']].append(orf)
+    for frame_orfs in grouped.values():
+        frame_orfs.sort(key=lambda orf: -orf['length'])
+    return grouped
+
+
+def print_orfs_by_frame(orfs):
+    """(ii) ORF count and longest ORF for each of the six frames."""
+    grouped = group_by_frame(orfs)
+    print(f"\n  (ii) {len(orfs)} ORFs across the six reading frames:")
+    print(f"  {'frame':>6} {'ORFs':>5} {'longest':>8} {'start':>7} {'end':>7}")
+    for label in FRAME_ORDER:
+        frame_orfs = grouped[label]
+        if not frame_orfs:
+            print(f"  {label:>6} {0:>5} {'-':>8} {'-':>7} {'-':>7}")
+            continue
+        longest = frame_orfs[0]
+        print(f"  {label:>6} {len(frame_orfs):>5} {longest['length']:>8} "
+              f"{longest['start']:>7} {longest['end']:>7}")
+
+
+def print_longest_composition(orfs):
+    """(iii) Length and amino acid distribution of the longest ORF found."""
+    if not orfs:
+        print("\n  (iii) No ORFs found.")
+        return
+
+    longest = max(orfs, key=lambda orf: orf['length'])
+    print(f"\n  (iii) Longest ORF: frame {longest['frame']}, "
+          f"{longest['start']}-{longest['end']}, {longest['length']} aa")
+    print("        amino acid distribution:")
+    for start in range(0, len(AA), PER_LINE):
+        row = AA[start:start + PER_LINE]
+        print("        " + "  ".join(
+            f"{a} {longest['composition'].get(a, 0):.3f}" for a in row))
+
+
 def print_orf_table(orfs, top=8):
     """(iv) The ORFs most likely to be coding, best first."""
     print(f"\n  (iv) {len(orfs)} ORFs found. Most likely to be coding:")
@@ -332,6 +377,8 @@ def real_gene(accession, scorer):
     print(f"    {record.description}")
 
     orfs = score_sequence(dna, scorer)
+    print_orfs_by_frame(orfs)
+    print_longest_composition(orfs)
     print_orf_table(orfs)
 
     cds = annotated_cds(record)

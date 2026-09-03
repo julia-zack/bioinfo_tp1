@@ -27,6 +27,7 @@ Produces:  aa_stabilized.png  and  aa_sample_sizes.png
 """
 
 import os
+import random
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -42,6 +43,7 @@ from stats import (
 from exercises.ex4.a import (
     COLOURS,
     RANDOM_SOURCES,
+    SAMPLE_SEED,
     build_sources,
     calculate_data_length,
     download_seqs,
@@ -50,6 +52,10 @@ from exercises.ex4.a import (
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def run():
+    # N and K come out of shuffled orders, so the seed is what makes a run
+    # repeat. Without it every run reports different numbers.
+    random.seed(SAMPLE_SEED)
+
     real_seqs = download_seqs()
     data_length = calculate_data_length(real_seqs)
     sources = build_sources(real_seqs, data_length)
@@ -75,9 +81,9 @@ def run():
 
     plot_convergence(curves, N, count_curves, K_by_organism, K)
 
-    # Step 2: compare the distributions at << N, ~ N, >> N. This one does use
-    # the equal-sized sources of 4a, because it compares sources against each
-    # other and that needs them to carry the same amount of data.
+    # Step 2: compare the distributions at << N, ~ N, >> N. Every source is
+    # sampled by the same prefix length, so the three panels compare equal
+    # amounts of data even though the sources differ in total size.
     final_distributions = {name: freqs(seq) for name, seq in sources.items()}
     plot_regimes(sources, final_distributions, N, data_length)
 

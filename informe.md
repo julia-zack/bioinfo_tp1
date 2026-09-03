@@ -28,15 +28,15 @@ Los totales quedan algo por debajo del número de entradas de cada query porque 
 
 > **4a)** Compare Distribución de aminoácidos de secuencia de proteínas al azar vs. secuencias de proteínas reales.
 
-Se comparan cuatro fuentes con la misma cantidad de residuos (1.848.964, el tamaño del proteoma de *E. coli* K-12, que es el más chico de los tres) para que ninguna tenga ventaja por volumen de datos: una fuente al azar y los proteomas revisados de *E. coli*, levadura y humano. A los tres organismos combinados en partes iguales los llamamos *Natural*; esa es la distribución de referencia que después usa 4e.
+Se comparan cuatro fuentes: los proteomas revisados completos de *E. coli*, levadura y humano, y una fuente al azar del tamaño del más chico de los tres (1.848.964 residuos, el de *E. coli* K-12). Cada organismo entra con todo lo que tiene, porque recortarlos a un tamaño común no hace más justa la comparación y sí aleja a cada uno de su propia distribución. A los tres combinados en partes iguales los llamamos *Natural*; esa es la distribución de referencia que después usa 4e.
 
-La fuente al azar no se arma sorteando aminoácidos con igual probabilidad sino traduciendo ADN aleatorio y descartando los codones stop. La diferencia importa porque el código genético no reparte los codones de manera pareja (leucina tiene seis y metionina uno solo): sortear aminoácidos uniformemente daría una fuente que no se parece a ninguna secuencia obtenida de ADN, y la comparación terminaría midiendo esa desigualdad del código antes que lo que distingue a una proteína real. El caso uniforme igual aparece en las figuras, como la línea punteada en 0,05. Levadura y humano tienen más residuos que *E. coli*, así que se los recorta, y las listas se mezclan antes de hacerlo para que el recorte no termine quedándose con las proteínas depositadas más recientemente.
+La fuente al azar no se arma sorteando aminoácidos con igual probabilidad sino traduciendo ADN aleatorio y descartando los codones stop. La diferencia importa porque el código genético no reparte los codones de manera pareja (leucina tiene seis y metionina uno solo): sortear aminoácidos uniformemente daría una fuente que no se parece a ninguna secuencia obtenida de ADN, y la comparación terminaría midiendo esa desigualdad del código antes que lo que distingue a una proteína real. El caso uniforme igual aparece en las figuras, como la línea punteada en 0,05. Para armar el perfil *Natural* sí hace falta recortar, porque las partes tienen que ser iguales: se toman 1.848.964 residuos de cada organismo, y las listas de proteínas se mezclan antes de recortar para que no queden sólo las depositadas más recientemente.
 
 ![Distribución de aminoácidos](exercises/ex4/aa_distribution.png)
 
 ![Perfil natural vs secuencias al azar](exercises/ex4/aa_natural_vs_random.png)
 
-Medidas con la métrica de 4c, las distancias al perfil Natural son 0,045 para humano, 0,063 para *E. coli*, 0,072 para levadura y 0,131 para la fuente al azar.
+Medidas con la métrica de 4c, las distancias al perfil Natural son 0,046 para humano, 0,063 para *E. coli*, 0,072 para levadura y 0,131 para la fuente al azar.
 
 Leucina aparece con la misma frecuencia en las dos fuentes, 0,098 al azar y 0,100 en los organismos, así que la cantidad de leucina de una secuencia no dice nada sobre su origen. Arginina es el caso opuesto: 0,098 al azar contra 0,052 en los organismos, una diferencia lo bastante grande como para distinguirlas. Lo mismo ocurre con cisteína (0,033 contra 0,016) y, en sentido inverso, con glutámico, aspártico y lisina, que los organismos usan cerca del doble. Los aminoácidos donde las dos fuentes coinciden no aportan información; los que se separan son los candidatos para el detector de 4e.
 
@@ -53,15 +53,15 @@ La consigna nombra dos ejes que no son el mismo: se puede crecer en cantidad de 
 
 ![Estabilización de la distribución](exercises/ex4/aa_stabilized.png)
 
-Las cuatro fuentes se estabilizan en el mismo orden de magnitud, alrededor de 3·10⁴ residuos: 34.200 la fuente al azar, 34.000 *E. coli*, 28.400 levadura y 32.400 humano. En proteínas enteras alcanza con unas 252 para *E. coli*, 220 para levadura y 406 para humano.
+Las cuatro fuentes se estabilizan en el mismo orden de magnitud, alrededor de 3·10⁴ residuos: 29.212 la fuente al azar, 29.269 *E. coli*, 28.594 levadura y 31.641 humano. En proteínas enteras alcanza con unas 230 para *E. coli*, 209 para levadura y 514 para humano.
 
-Los dos ejes no dan el mismo número. Las 406 proteínas humanas suman unos 226.000 residuos, siete veces el N del eje 1, así que hacen falta más residuos para estabilizar la distribución cuando llegan agrupados en proteínas enteras que cuando se cuentan sueltos. La brecha además es mayor cuanto más largas son las proteínas del organismo: 2,3 en *E. coli*, que promedia 305 residuos por proteína, 3,5 en levadura con 449 y 7,0 en humano con 556.
+Los dos ejes no dan el mismo número. Las 514 proteínas humanas suman unos 286.000 residuos, nueve veces el N del eje 1, así que hacen falta más residuos para estabilizar la distribución cuando llegan agrupados en proteínas enteras que cuando se cuentan sueltos. La brecha además es mayor cuanto más largas son las proteínas del organismo: 2,4 en *E. coli*, que promedia 305 residuos por proteína, 3,3 en levadura con 449 y 9,0 en humano con 556.
 
 ![Distribuciones a distintos tamaños de muestra](exercises/ex4/aa_sample_sizes.png)
 
 Los tres gráficos de la figura de arriba muestran lo mismo de otra forma, con la distribución completa a tres tamaños de muestra. Con R = 1000, muy por debajo de N, las barras son ruido: levadura da K en 0,096 cuando su valor real es 0,073, y *E. coli* da L en 0,119 contra 0,106. Con R ≈ N y con R >> N los dos gráficos de abajo son casi idénticos, con diferencias en el tercer decimal: el del medio ya contiene toda la información que aporta el último, usando el 1,7% de los datos.
 
-Conviene aclarar que N y K son ruidosos. Cada corrida mezcla los datos en un orden distinto y da un resultado un poco diferente, y como la curva llega al umbral casi horizontal, una variación mínima en su altura mueve bastante el punto donde lo cruza: sobre 6 corridas de la fuente al azar, N va de 21.900 a 34.400. Lo que se sostiene es el orden de magnitud y la relación entre los dos ejes, no la cifra exacta de una corrida.
+Conviene aclarar que N y K son ruidosos. El resultado depende del orden en que se mezclan los datos, y como la curva llega al umbral casi horizontal, una variación mínima en su altura mueve bastante el punto donde lo cruza: repitiendo la medición con distintos órdenes, el N de la fuente al azar va de 21.900 a 34.400. Por eso el programa arranca siempre desde la misma mezcla, así los números de arriba se pueden reproducir. Lo que se sostiene igual es el orden de magnitud y la relación entre los dos ejes, no la cifra exacta.
 
 ---
 
@@ -87,14 +87,14 @@ La parte (i) es el análisis de convergencia de 4b, donde la métrica se aplica 
 
 ```
               Random DNA     E. coli       Yeast       Human     Natural
-  Random DNA       0.000       0.155       0.165       0.108       0.131
-     E. coli       0.155       0.000       0.122       0.090       0.063
-       Yeast       0.165       0.122       0.000       0.101       0.072
-       Human       0.108       0.090       0.101       0.000       0.045
-     Natural       0.131       0.063       0.072       0.045       0.000
+  Random DNA       0.000       0.155       0.166       0.110       0.131
+     E. coli       0.155       0.000       0.122       0.089       0.063
+       Yeast       0.166       0.122       0.000       0.103       0.072
+       Human       0.110       0.089       0.103       0.000       0.046
+     Natural       0.131       0.063       0.072       0.046       0.000
 ```
 
-La matriz confirma con todos los pares lo que en 4a se veía en uno: las distancias entre organismos (0,090 a 0,122) están en el mismo orden que las distancias al azar (0,108 a 0,165). Levadura está a 0,122 de *E. coli* y a 0,165 del azar, apenas 1,4 veces más lejos.
+La matriz confirma con todos los pares lo que en 4a se veía en uno: las distancias entre organismos (0,089 a 0,122) están en el mismo orden que las distancias al azar (0,110 a 0,166). Levadura está a 0,122 de *E. coli* y a 0,166 del azar, apenas 1,4 veces más lejos.
 
 Para 4e, sin embargo, la pregunta no es cuánto se diferencian dos conjuntos grandes sino si la métrica alcanza para decidir sobre una secuencia sola. Para medirlo tomamos fragmentos de proteínas reales y secuencias al azar del mismo largo, calculamos la distancia de cada uno al perfil Natural, y contamos con qué frecuencia el fragmento real queda más cerca que el aleatorio. Llamamos a eso la tasa de aciertos: 0,5 es lo que daría elegir al azar y 1,0 es separación perfecta.
 

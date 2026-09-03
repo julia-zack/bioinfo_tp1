@@ -135,13 +135,14 @@ Arginina aparece en los tres pares y el segundo aminoácido alterna entre glutá
 
 Para (iv) hay que combinar dos números de naturaleza distinta, un largo y una distribución. Lo que hicimos fue armar un cociente entre la probabilidad de observar el dato si fuera una región codificante y la de observarlo si fuera un dato al azar. Eso se hace igual para el largo y para la frecuencia de aminoácidos, y tomando el logaritmo de cada uno los dos se pueden sumar. La suma va de menos infinito a más infinito, y se convierte en probabilidad con `P = 1 / (1 + e^-x)`, que deshace el logaritmo: cuando la suma es 0 las dos hipótesis son igual de probables y da 0,5.
 
-La señal de largo calcula esas dos probabilidades para el largo del ORF. Del lado del azar, un ORF se termina cuando aparece un stop. 3 de los 64 codones son stop, así que la probabilidad de que un codón termine el ORF es de 0,0469 y asi que el largo medio esperado alrededor de 21 codones.
+La señal de largo calcula esas dos probabilidades para el largo del ORF. Del lado del azar, un ORF se termina cuando aparece un stop. 3 de los 64 codones son stop, así que la probabilidad de que un codón termine el ORF es de 0,0469 y el largo medio esperado alrededor de 21 codones.
 
 Del otro lado usamos los largos de las proteínas reales de los tres proteomas de 4a. Esos largos no forman una campana, pero sus logaritmos sí. El centro de la curva queda en 352 residuos.
 
-Las dos curvas se cruzan cerca de los 78 residuos: así que por arriba de 78 lo consideramos evidencia de ser codificante y por debajo de ser aleatorio.
+Las dos curvas se cruzan en los 79 residuos: por arriba lo consideramos evidencia de ser codificante y por debajo de ser aleatorio.
 
-La señal de composición le asigna a cada aminoácido un peso, el logaritmo del cociente entre su frecuencia en las proteínas reales y la que produce el ADN aleatorio. El peso de un ORF es la suma de los pesos de sus residuos. Los pesos resultantes son coherentes con lo que se midió antes: los más negativos son cisteína (−0,72) y arginina (−0,63), que es exactamente el par que 4d había elegido como el mejor, y los más positivos glutámico (+0,68), lisina (+0,58) y aspártico (+0,47), que también estaban en esa lista. Leucina queda en +0,02, es decir que no vota, lo que coincide con 4a, donde aparecía con la misma frecuencia en las dos. Es lo mismo que hicimos en 4d al quedarnos con R y C en lugar de los veinte, aunque un poco mejor: en vez de decidir qué aminoácidos entran y cuáles no, entran los veinte y cada uno pesa según cuan bien discrimina.
+La señal de composición le asigna a cada aminoácido un peso, el logaritmo del cociente entre su frecuencia en las proteínas reales y la que produce el ADN aleatorio. El peso de un ORF es la suma de los pesos de sus residuos. Los pesos resultantes son coherentes con lo que se midió antes: los más negativos son cisteína (−0,72) y arginina (−0,63), que es exactamente el par que 4d había elegido como el mejor, y los más positivos glutámico (+0,68), lisina (+0,58) y aspártico (+0,47), que también estaban en esa lista. Leucina queda en +0,02, es decir que no vota, lo que coincide con 4a, donde aparecía con la misma frecuencia en las dos. Es lo mismo que hicimos en 4d al quedarnos con R y C en lugar de los veinte, aunque un poco mejor: en vez de decidir qué aminoácidos entran y cuáles no, entran los veinte y cada uno pesa según cuán bien discrimina.
+
 Las dos referencias se aprenden de los mismos proteomas de Swiss-Prot que usa 4a.
 
 Falta una corrección. Las dos señales miran un ORF como si fuera el único que hubiéramos examinado, y no lo es: en el gen de ejemplo hay 43. Cada uno es otra oportunidad para que una racha de codones sin stop salga larga de casualidad, así que la probabilidad bajo el azar hay que multiplicarla por la cantidad de candidatos, que en logaritmo es restarle log(N) a todos. Con 43 candidatos son 3,76 unidades menos para cada uno, y el largo a partir del cual un ORF empieza a ser evidencia de codificante se corre de 79 a 147 residuos.
@@ -213,8 +214,12 @@ La tabla muestra las dos señales solas, sin el descuento por cantidad de candid
 
 **Más transcriptos anotados.** Las dos referencias se aprenden de 16,8 millones de residuos, muy por encima de los 30.000 que en 4b alcanzaban, pero el peso de la composición se apoya en 89 transcriptos y ahí sí se nota.
 
-**Medir el prior** en lugar de dejarlo en 0,5.
-
 **Bajar el 19% restante.** El descuento por cantidad de candidatos deja 17 de 89 transcriptos con algún falso positivo, y esos no se explican por haber mirado muchos ORFs. Habría que ver qué tienen en común.
 
 Quedan además dos cosas del método que conviene aclarar. Las probabilidades se siguen saturando en los ORFs largos: el CDS del gen de ejemplo da 0,958, pero las tres proteínas del control positivo dan 1,000, así que a partir de cierto punto el número deja de distinguir entre un candidato bueno y uno mejor. Y las dos señales no son independientes como el método supone, porque el peso de composición es una suma sobre residuos y crece con el largo igual que la señal de largo.
+
+### Cómo llegamos a esta versión
+
+Nuestra primera versión del detector sumaba las dos señales sin ningún peso, o sea dándoles la misma importancia, y no descontaba por la cantidad de ORFs examinados. Con esa versión el 84% de los transcriptos tenía algún falso positivo y el control negativo fallaba en el 12% de las corridas.
+
+Las dos correcciones salieron de revisar los resultados con Claude (Anthropic). El aporte concreto fue proponer que midiéramos cosas que no estábamos midiendo: los falsos positivos contra los 89 transcriptos anotados, que es lo que dejó ver que el peso 1 no estaba elegido sino heredado, y la cuenta de cuántos ORFs esperaba el azar entre 43 candidatos, que es lo que mostró que el umbral se estaba aplicando como si hubiéramos mirado uno solo. Los valores finales (peso 0,15 y descuento log N) se decidieron midiendo, con los números que aparecen en esta sección, no eligiéndolos a mano.

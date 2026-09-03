@@ -27,7 +27,7 @@ probability between 0 and 1.
          P(length | coding) = log-normal fitted to the real proteins
          P(length | chance) = geometric with q
      length_log_odds = log( P(length|coding) / P(length|chance) )
-     It crosses zero near 90 aa: longer means more evidence of coding.
+     It crosses zero near 79 aa: longer means more evidence of coding.
 
   2) COMPOSITION SIGNAL.
      Each amino acid gets a weight = log( f_natural / f_random ), where f_natural
@@ -38,8 +38,18 @@ probability between 0 and 1.
      SUM of the weights of its residues, so it accumulates evidence with length.
 
   3) COMBINE.
-     total_log_odds = length_log_odds + composition_log_odds + log(prior_odds)
-     P(coding) = sigmoid(total_log_odds) = 1 / (1 + e^-total_log_odds)
+     The composition counts less than the length, and how much less is measured
+     against transcripts with an annotated coding region rather than assumed.
+     See fit_composition_weight().
+         total_log_odds = length_log_odds + w * composition_log_odds
+
+  4) DISCOUNT FOR HAVING LOOKED AT MANY.
+     Six frames over one sequence turn up dozens of ORFs, and each is another
+     chance for one to come out long by luck, so every score drops by
+     log(number of ORFs). See candidate_discount(). On a 1941 nt transcript
+     that is 43 candidates and 3.76 units, which moves the length at which an
+     ORF starts counting as evidence from 79 to 147 residues.
+         P(coding) = sigmoid(total_log_odds - discount)
 
 Note: mixing a continuous density (log-normal) with a discrete one (geometric)
 in the length ratio is an approximation, and the two signals are not perfectly
@@ -67,10 +77,6 @@ from sequences import (
 from stats import freqs
 from ncbi import fetch_cds_annotations, fetch_genbank_record, get_real_sequences
 from exercises.ex4.a import REAL_ORGANISMS
-
-# How likely an ORF is to be coding before any evidence is in. 0.5 is neutral
-# and leaves the decision to the two signals.
-PRIOR_CODING = 0.5
 
 # Transcript used when run() is called without arguments: a real human mRNA
 # whose annotated CDS is the ground truth for (v).
@@ -141,13 +147,12 @@ class CodingScorer:
     Between them they turn any ORF into a probability that it codes.
     """
 
-    def __init__(self, length_mu, length_sigma, stop_prob, aa_weight, prior,
+    def __init__(self, length_mu, length_sigma, stop_prob, aa_weight,
                  comp_weight=1.0):
         self.length_mu = length_mu         # mean of ln(length) of real proteins
         self.length_sigma = length_sigma   # standard deviation of ln(length)
         self.stop_prob = stop_prob         # q = P(codon is a stop)
         self.aa_weight = aa_weight         # {amino acid: log(f_natural/f_random)}
-        self.log_prior_odds = math.log(prior / (1 - prior))
         self.comp_weight = comp_weight     # how much the composition counts
 
     def length_log_odds(self, length):
@@ -161,10 +166,9 @@ class CodingScorer:
         return sum(self.aa_weight.get(residue, 0.0) for residue in protein)
 
     def coding_log_odds(self, orf):
-        """(iv) Both signals plus the prior."""
+        """(iv) Both signals added up."""
         return (self.length_log_odds(orf['length'])
-                + self.comp_weight * self.composition_log_odds(orf['protein'])
-                + self.log_prior_odds)
+                + self.comp_weight * self.composition_log_odds(orf['protein']))
 
     def probability(self, orf):
         """(iv) The ORF's final probability of being coding."""
@@ -215,7 +219,7 @@ def amino_acid_weights(real_seqs):
     return {aa: math.log(f_natural[aa] / f_random[aa]) for aa in AA}
 
 
-def train_scorer(real_seqs, prior=PRIOR_CODING, comp_weight=1.0):
+def train_scorer(real_seqs, comp_weight=1.0):
     """Fit both references and return a detector ready to score ORFs."""
     log_lengths = [math.log(length) for length in coding_lengths(real_seqs)]
     length_mu = statistics.mean(log_lengths)
@@ -225,7 +229,6 @@ def train_scorer(real_seqs, prior=PRIOR_CODING, comp_weight=1.0):
         length_sigma=length_sigma,
         stop_prob=stop_codon_probability(),
         aa_weight=amino_acid_weights(real_seqs),
-        prior=prior,
         comp_weight=comp_weight,
     )
 
@@ -320,28 +323,27 @@ def print_orf_table(orfs, top=8):
 # ===========================================================================
 
 def labelled_signals(scorer):
-    """The two signals of every ORF of every annotated transcript.
+    """The two signals of every ORF of every annotated transcript, each one
+    carrying the answer: whether it is the real coding region.
 
-    One list per transcript, holding for each of its ORFs the length signal
-    already carrying the candidate discount, the composition signal, and whether
-    that ORF is the annotated coding region. The signals are kept apart so a
-    weight can be tried without scoring again. The discount is the same for every
-    ORF of a transcript, so it changes the threshold measures and leaves the
-    ranking ones alone.
+    Returns one list per transcript. The signals (lenght, comp) are kept apart instead of added
+    up, so trying different weights doesn't need to recalculate the orfs.
     """
-    records = list(SeqIO.parse(TRANSCRIPT_SET, "fasta"))
+    records = list(SeqIO.parse(TRANSCRIPT_SET, "fasta"))            # the DNA
     annotations = fetch_cds_annotations([record.id for record in records])
 
     transcripts = []
     for record in records:
         cds = annotations.get(record.id)
         if cds is None:
-            continue
+            continue              # without an annotation there is nothing to check
         found = find_orfs(str(record.seq))
+        # Each extra ORF is another chance for one of them to look coding by
+        # luck, so what every score is worth comes down with how many there are.
         discount = candidate_discount(len(found))
-        orfs = [(scorer.length_log_odds(orf['length']) - discount,
-                 scorer.composition_log_odds(orf['protein']),
-                 [orf['start'], orf['end']] == cds)
+        orfs = [(scorer.length_log_odds(orf['length']) - discount,   # signal 1
+                 scorer.composition_log_odds(orf['protein']),        # signal 2
+                 [orf['start'], orf['end']] == cds)                  # the answer
                 for orf in found]
         transcripts.append(orfs)
     return transcripts
@@ -435,16 +437,13 @@ def check_weight_holds(transcripts, splits=5):
     return held, splits, picked
 
 
-def print_composition_weight(scorer):
-    """(iv) How much the composition counts next to the length, by measuring.
+def print_composition_weight(transcripts, weight):
+    """(iv) The grid the weight was chosen from, and the check that it holds.
 
-    The weight is fitted on all the annotated transcripts, and the repeated
-    split is reported next to it as a check on whether the result survives being
-    fitted and measured on different transcripts.
+    Each column answers a different question, so they are printed side by side:
+    which ORF is the CDS, how often the top one is right, how often an ORF that
+    is not the CDS clears the threshold, and how often the real one does.
     """
-    transcripts = labelled_signals(scorer)
-    weight = fit_composition_weight(transcripts)
-
     print("\nHow much should the composition count next to the length?")
     print(f"  Measured on {len(transcripts)} transcripts with an annotated CDS.")
     print(f"  {'weight':>8} {'hit rate':>10} {'top ORF':>9}"
@@ -466,7 +465,6 @@ def print_composition_weight(scorer):
     print("\n  The hit rate does not move, so the length alone already says which")
     print("  ORF is the CDS. What the weight changes is how often the detector")
     print("  calls an ORF that is not one, and no weight brings that near zero.")
-    return weight
 
 
 # ===========================================================================
@@ -631,13 +629,16 @@ def run(source=DEMO_ACCESSION):
     describe_scorer(scorer)
 
     # (iv) the composition should count less than the length, but by how much is
-    # measured against annotated transcripts
-    scorer = train_scorer(real_seqs, comp_weight=print_composition_weight(scorer))
+    # measured against annotated transcripts rather than picked by hand
+    transcripts = labelled_signals(scorer)
+    comp_weight = fit_composition_weight(transcripts)
+    print_composition_weight(transcripts, comp_weight)
+    scorer = train_scorer(real_seqs, comp_weight=comp_weight)
 
     # (v) the three tests the exercise asks for
     positive_controls(scorer)
     negative_control(900, scorer)
-    scrambled_control(scorer)
+    scrambled_control(scorer) # an extra false possitive to show a problem of the method
     real_gene(source, scorer)
 
     print("\nPossible improvements (v, last question):")
@@ -647,5 +648,4 @@ def run(source=DEMO_ACCESSION):
     print("  - fit the composition weight on more than 89 transcripts. The two")
     print("    references are learnt from 16.8M residues, far past what 4b showed")
     print("    is enough, while the weight rests on 89;")
-    print("  - measure the prior instead of leaving it at 0.5;")
     print("  - model the length per organism rather than fitting all three together.")

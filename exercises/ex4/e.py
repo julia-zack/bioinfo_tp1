@@ -27,7 +27,7 @@ probability between 0 and 1.
          P(length | coding) = log-normal fitted to the real proteins
          P(length | chance) = geometric with q
      length_log_odds = log( P(length|coding) / P(length|chance) )
-     It crosses zero near 90 aa: longer means more evidence of coding.
+     It crosses zero at 79 aa: longer means more evidence of coding.
 
   2) COMPOSITION SIGNAL.
      Each amino acid gets a weight = log( f_natural / f_random ), where f_natural
@@ -48,12 +48,16 @@ rank and decide, not as a fully calibrated probability.
 
 Both references (the log-normal of the length and the composition weights) are
 learnt from the same Swiss-Prot proteins 4a uses, cached in data/.
+
+Produces:  length_model.png  and  length_signal.png
 """
 
 import math
+import os
 import random
 import statistics
 
+import matplotlib.pyplot as plt
 from Bio import SeqIO
 
 from sequences import (
@@ -66,7 +70,10 @@ from sequences import (
 )
 from stats import freqs
 from ncbi import fetch_cds_annotations, fetch_genbank_record, get_real_sequences
+from plots import BLUE, GREY, GRID, ORANGE
 from exercises.ex4.a import REAL_ORGANISMS
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 # How likely an ORF is to be coding before any evidence is in. 0.5 is neutral
 # and leaves the decision to the two signals.
@@ -104,10 +111,18 @@ def sigmoid(x):
     return 1.0 / (1.0 + math.exp(-x))
 
 
+def normal_density(x, mu, sigma):
+    """Normal density at x."""
+    return math.exp(-((x - mu) ** 2) / (2 * sigma ** 2)) / (sigma * math.sqrt(2 * math.pi))
+
+
 def lognormal_density(x, mu, sigma):
-    """Log-normal density at x, with mu and sigma taken over ln(x)."""
-    return (1.0 / (x * sigma * math.sqrt(2 * math.pi))) * \
-           math.exp(-((math.log(x) - mu) ** 2) / (2 * sigma ** 2))
+    """Log-normal density at x, with mu and sigma taken over ln(x).
+
+    A log-normal is a normal over the logarithm, which is what this says: the
+    normal density read at ln(x), divided by x for the change of variable.
+    """
+    return normal_density(math.log(x), mu, sigma) / x
 
 
 def candidate_discount(orf_count):
@@ -612,13 +627,237 @@ def real_gene(accession, scorer):
     cds = annotated_cds(record)
     if cds is None:
         print("    (the record carries no CDS annotated on the + strand)")
-        return
+        return orfs
     best = orfs[0]
     match = (best['start'], best['end']) == cds
     print(f"\n    annotated CDS (truth):      start={cds[0]}  end={cds[1]}")
     print(f"    most probable ORF (call):   start={best['start']}  end={best['end']}"
           f"  P={best['probability']:.3f}")
     print(f"    -> {'HIT: the most probable ORF is the real CDS.' if match else 'no exact match.'}")
+    return orfs
+
+
+# ===========================================================================
+# What the length signal looks like
+# ===========================================================================
+
+LENGTH_HIST_LIMIT = 2000        # residues shown on the raw length histogram
+LENGTH_GRID = range(5, 601)     # ORF lengths the length signal is drawn over
+MARK = '#d1462f'                # marker colour, the same 4b uses for a threshold
+
+
+def tidy(ax):
+    """Recessive grid and no top/right spines, like the rest of the 4a/4b plots."""
+    ax.yaxis.grid(True, color=GRID, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+
+
+def plot_length_model(real_seqs, scorer):
+    """Why P(length|coding) is a log-normal and not a normal.
+
+    Left: the real protein lengths as they come out of the proteomes. They are
+    not a bell, they are piled up to the left with a long tail, which is what
+    pulls the mean well past the median. Right: the same lengths in ln, which is
+    a bell, with the normal train_scorer() fitted on them drawn on top. Its mu
+    and sigma are the two numbers the detector stores about length.
+    """
+    lengths = coding_lengths(real_seqs)
+    log_lengths = [math.log(length) for length in lengths]
+
+    fig, (ax_raw, ax_log) = plt.subplots(1, 2, figsize=(13, 5))
+    plot_raw_lengths(ax_raw, lengths, scorer)
+    plot_log_lengths(ax_log, log_lengths, scorer)
+
+    fig.suptitle(f'Length of the {len(lengths):,} real proteins')
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, 'length_model.png'), dpi=150)
+
+
+def plot_raw_lengths(ax, lengths, scorer):
+    """Left panel: the lengths as they come, with the fitted density on top."""
+    mu, sigma = scorer.length_mu, scorer.length_sigma
+    bins = range(0, LENGTH_HIST_LIMIT + 25, 25)
+    ax.hist(lengths, bins=bins, density=True, color=BLUE, label='real proteins')
+
+    grid = range(1, LENGTH_HIST_LIMIT + 1)
+    ax.plot(list(grid), [lognormal_density(x, mu, sigma) for x in grid],
+            color=ORANGE, linewidth=2, label='fitted log-normal')
+
+    median, mean = statistics.median(lengths), statistics.mean(lengths)
+    ax.axvline(median, color=GREY, linestyle='--', linewidth=1.2,
+               label=f'median = {median:.0f} aa')
+    ax.axvline(mean, color=GREY, linestyle=':', linewidth=1.5,
+               label=f'mean = {mean:.0f} aa')
+
+    # The tail runs to 35.000 aa; the axis stops where the bars stop being
+    # visible. How many proteins that leaves out is reported in informe.md.
+    ax.set_xlim(0, LENGTH_HIST_LIMIT)
+    ax.set_xlabel('Protein length (residues)')
+    ax.set_ylabel('Density')
+    ax.set_title('Raw lengths', fontsize=10)
+    tidy(ax)
+    ax.legend(frameon=False)
+
+
+def plot_log_lengths(ax, log_lengths, scorer):
+    """Right panel: the same lengths in ln, where they do form a bell."""
+    mu, sigma = scorer.length_mu, scorer.length_sigma
+    # Binned over +/-4 sigma, which is where the fit lives, so the bars and the
+    # curve are read on the same span instead of the whole range of the data.
+    low, high = mu - 4 * sigma, mu + 4 * sigma
+    step = (high - low) / 60
+    ax.hist(log_lengths, bins=[low + i * step for i in range(61)], density=True,
+            color=BLUE, label='real proteins, in ln')
+
+    grid = [low + i * (high - low) / 200 for i in range(201)]
+    ax.plot(grid, [normal_density(x, mu, sigma) for x in grid], color=ORANGE,
+            linewidth=2, label=f'fitted normal (mu = {mu:.2f}, sigma = {sigma:.2f})')
+
+    ax.axvspan(mu - sigma, mu + sigma, color=GRID, zorder=0,
+               label=f'+/-1 sigma = {math.exp(mu - sigma):.0f}-{math.exp(mu + sigma):.0f} aa')
+    ax.axvline(mu, color=MARK, linestyle=':', linewidth=1.5,
+               label=f'mu = {mu:.2f}, i.e. e^mu = {math.exp(mu):.0f} aa')
+
+    ax.set_xlim(low, high)
+    ax.set_ylim(0, 0.78)   # headroom, so the legend clears the top of the bars
+    ax.set_xlabel('ln(protein length)')
+    ax.set_ylabel('Density')
+    ax.set_title('The same lengths, in ln', fontsize=10)
+    tidy(ax)
+    ax.legend(frameon=False, loc='upper left')
+
+
+def transcript_orf_counts():
+    """How many ORFs each annotated transcript holds.
+
+    The discount is not a constant of the detector, it is counted on whatever
+    sequence is being scored. These are the counts the threshold's range comes
+    from, so the figure can show a band instead of pretending one gene's N is
+    the answer.
+
+    Restricted to the transcripts with an annotated CDS, the same set the
+    composition weight is fitted on, so the report has one number and not two.
+    """
+    records = list(SeqIO.parse(TRANSCRIPT_SET, "fasta"))
+    annotations = fetch_cds_annotations([record.id for record in records])
+    return [len(find_orfs(str(record.seq))) for record in records
+            if annotations.get(record.id) is not None]
+
+
+def first_positive(lengths, log_odds, discount=0.0):
+    """The shortest length whose log-odds comes out positive."""
+    for length, value in zip(lengths, log_odds):
+        if value - discount > 0:
+            return length
+    return None
+
+
+def print_length_thresholds(scorer, orf_count, orf_counts):
+    """The length at which the signal starts arguing for coding.
+
+    It is not one number: the discount depends on how many candidates the
+    sequence holds, so it is a range. These are the figures informe.md quotes.
+    """
+    lengths = list(LENGTH_GRID)
+    log_odds = [scorer.length_log_odds(length) for length in lengths]
+    threshold = lambda count: first_positive(lengths, log_odds,
+                                             candidate_discount(count))
+    print("\nLength at which the signal turns into evidence of coding:")
+    print(f"  {first_positive(lengths, log_odds):>4} aa   one ORF, taken on its own")
+    print(f"  {threshold(orf_count):>4} aa   this gene ({orf_count} candidates)")
+    print(f"  {threshold(min(orf_counts)):>4} to {threshold(max(orf_counts))} aa"
+          f"   across the {len(orf_counts)} transcripts"
+          f" ({min(orf_counts)} to {max(orf_counts)} candidates)")
+
+
+def plot_length_signal(scorer, orf_count, orf_counts):
+    """Where the length threshold comes from.
+
+    The two panels are not the same kind of thing, and the figure says so.
+
+    Left: the detector on its own, before it has seen any sequence. The two
+    hypotheses P(length|coding) and P(length|chance) on one axis, crossing where
+    neither explains the length better than the other.
+
+    Right: what a sequence adds. The solid line is still generic, the log of the
+    ratio between those two curves. Everything below it is the discount, and
+    that one IS per sequence: the band spans the ORF counts in orf_counts, and
+    the dashed line is the single count orf_count, from the gene scored above.
+    """
+    lengths = list(LENGTH_GRID)
+    log_odds = [scorer.length_log_odds(length) for length in lengths]
+
+    fig, (ax_densities, ax_odds) = plt.subplots(1, 2, figsize=(13, 5))
+    plot_length_densities(ax_densities, lengths, scorer,
+                          first_positive(lengths, log_odds))
+    plot_length_log_odds(ax_odds, lengths, log_odds, orf_count, orf_counts)
+
+    fig.suptitle('The length signal')
+    fig.tight_layout()
+    fig.savefig(os.path.join(HERE, 'length_signal.png'), dpi=150)
+
+
+def plot_length_densities(ax, lengths, scorer, threshold):
+    """Left panel: the coding and the chance curve, and where they cross."""
+    ax.plot(lengths, [lognormal_density(x, scorer.length_mu, scorer.length_sigma)
+                      for x in lengths],
+            color=BLUE, linewidth=2, label='P(length | coding): log-normal')
+    ax.plot(lengths, [geometric_density(x, scorer.stop_prob) for x in lengths],
+            color=ORANGE, linewidth=2,
+            label=f'P(length | chance): geometric, q = {scorer.stop_prob:.4f}')
+
+    ax.axvline(threshold, color=MARK, linestyle=':', linewidth=1.5)
+    ax.annotate(f'{threshold} aa', xy=(threshold, 3e-2),
+                xytext=(threshold + 15, 3e-2), color=MARK, fontsize=9)
+
+    ax.set_yscale('log')
+    ax.set_ylim(1e-12, 1)
+    ax.set_xlabel('ORF length (residues)')
+    ax.set_ylabel('Probability of that length')
+    ax.set_title('The two hypotheses', fontsize=10)
+    tidy(ax)
+    ax.legend(frameon=False, loc='lower left')
+
+
+def plot_length_log_odds(ax, lengths, log_odds, orf_count, orf_counts):
+    """Right panel: the same ratio in log, and what each sequence pays for it.
+
+    One curve per hypothesis would be misleading here, because the discount is
+    not a property of the detector. The band is the whole range of ORF counts
+    seen across the transcripts, so the threshold reads as what it is, a range
+    that depends on the sequence, with this gene marked inside it.
+    """
+    fewest, most = min(orf_counts), max(orf_counts)
+    discount = candidate_discount(orf_count)
+
+    alone = first_positive(lengths, log_odds)
+    here = first_positive(lengths, log_odds, discount)
+
+    ax.fill_between(lengths,
+                    [value - candidate_discount(most) for value in log_odds],
+                    [value - candidate_discount(fewest) for value in log_odds],
+                    color=GRID, zorder=0,
+                    label=f'discount over the {len(orf_counts)} transcripts:'
+                          f' {fewest} to {most} candidates')
+    ax.plot(lengths, log_odds, color=BLUE, linewidth=2,
+            label='generic: one ORF, taken on its own')
+    ax.plot(lengths, [value - discount for value in log_odds], color=BLUE,
+            linewidth=1.8, linestyle='--',
+            label=f'this gene: {orf_count} candidates (-{discount:.2f})')
+
+    ax.axhline(0, color=GREY, linewidth=1.2, zorder=0)
+    for threshold in (alone, here):
+        ax.axvline(threshold, color=MARK, linestyle=':', linewidth=1.5)
+        ax.annotate(f'{threshold} aa', xy=(threshold, -6),
+                    xytext=(threshold + 8, -6), color=MARK, fontsize=9)
+
+    ax.set_xlabel('ORF length (residues)')
+    ax.set_ylabel('log( P(length|coding) / P(length|chance) )')
+    ax.set_title('The log-odds between them', fontsize=10)
+    tidy(ax)
+    ax.legend(frameon=False, loc='lower right')
 
 
 # ===========================================================================
@@ -638,7 +877,16 @@ def run(source=DEMO_ACCESSION):
     positive_controls(scorer)
     negative_control(900, scorer)
     scrambled_control(scorer)
-    real_gene(source, scorer)
+    orfs = real_gene(source, scorer)
+
+    # The two figures behind the length signal. The candidate discount drawn is
+    # the one this gene actually pays, so the figure matches the run above it.
+    orf_counts = transcript_orf_counts()
+    print_length_thresholds(scorer, len(orfs), orf_counts)
+    plot_length_model(real_seqs, scorer)
+    plot_length_signal(scorer, len(orfs), orf_counts)
+    plt.show()
+    print("\nSaved: length_model.png and length_signal.png")
 
     print("\nPossible improvements (v, last question):")
     print("  - add a signal that reads the order of the residues, such as the")

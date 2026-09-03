@@ -126,3 +126,95 @@ Queda una objeción posible: R y C se eligieron porque eran los que mejor separa
 
 Arginina aparece en los tres pares y el segundo aminoácido alterna entre glutámico y cisteína, así que la elección no depende del organismo que se mire. Las tasas sobre el organismo dejado afuera van de 0,882 a 0,936, el mismo rango que las de entrenamiento, de modo que el 0,935 de la tabla anterior no era producto de haber elegido mirando los mismos datos. Que en dos de los tres casos la tasa sea mayor sobre el organismo dejado afuera no es raro: los organismos difieren en cuán fácil es distinguirlos del azar, y eso pesa más que la diferencia entre elegir y evaluar.
 
+
+---
+
+## 4e
+
+> **4e)** Detector de ORFs. Escriba un código que: i) levante una secuencia de ADN, ii) obtenga los 6 marcos de lectura posibles y determine los ORFs de cada uno, iii) para cada ORF determine a) la longitud y b) la distribución de aminoácidos, iv) en base a lo analizado determine, a partir del largo y la distribución, una probabilidad de corresponder (o no) a una región codificante, v) para probar el programa diseñe: a) un control positivo, b) un control negativo; luego obtenga de una base de datos un gen eucariota completo y corra su programa. Compare con lo esperado.
+
+Para (iv) hay que combinar dos números de naturaleza distinta, un largo y una distribución. Lo que hicimos fue armar un cociente entre la probabilidad de observar el dato si fuera una región codificante y la de observarlo si fuera un dato al azar. Eso se hace igual para el largo y para la frecuencia de aminoácidos, y tomando el logaritmo de cada uno los dos se pueden sumar. La suma va de menos infinito a más infinito, y se convierte en probabilidad con `P = 1 / (1 + e^-x)`, que deshace el logaritmo: cuando la suma es 0 las dos hipótesis son igual de probables y da 0,5.
+
+La señal de largo calcula esas dos probabilidades para el largo del ORF. Del lado del azar, un ORF se termina cuando aparece un stop. 3 de los 64 codones son stop, así que la probabilidad de que un codón termine el ORF es de 0,0469 y asi que el largo medio esperado alrededor de 21 codones.
+
+Del otro lado usamos los largos de las proteínas reales de los tres proteomas de 4a. Esos largos no forman una campana, pero sus logaritmos sí. El centro de la curva queda en 352 residuos.
+
+Las dos curvas se cruzan cerca de los 78 residuos: así que por arriba de 78 lo consideramos evidencia de ser codificante y por debajo de ser aleatorio.
+
+La señal de composición le asigna a cada aminoácido un peso, el logaritmo del cociente entre su frecuencia en las proteínas reales y la que produce el ADN aleatorio. El peso de un ORF es la suma de los pesos de sus residuos. Los pesos resultantes son coherentes con lo que se midió antes: los más negativos son cisteína (−0,72) y arginina (−0,63), que es exactamente el par que 4d había elegido como el mejor, y los más positivos glutámico (+0,68), lisina (+0,58) y aspártico (+0,47), que también estaban en esa lista. Leucina queda en +0,02, es decir que no vota, lo que coincide con 4a, donde aparecía con la misma frecuencia en las dos. Es lo mismo que hicimos en 4d al quedarnos con R y C en lugar de los veinte, aunque un poco mejor: en vez de decidir qué aminoácidos entran y cuáles no, entran los veinte y cada uno pesa según cuan bien discrimina.
+Las dos referencias se aprenden de los mismos proteomas de Swiss-Prot que usa 4a.
+
+Falta una corrección. Las dos señales miran un ORF como si fuera el único que hubiéramos examinado, y no lo es: en el gen de ejemplo hay 43. Cada uno es otra oportunidad para que una racha de codones sin stop salga larga de casualidad, así que la probabilidad bajo el azar hay que multiplicarla por la cantidad de candidatos, que en logaritmo es restarle log(N) a todos. Con 43 candidatos son 3,76 unidades menos para cada uno, y el largo a partir del cual un ORF empieza a ser evidencia de codificante se corre de 79 a 147 residuos.
+
+### Cuánto pesa cada señal
+
+Sumar las dos señales (largo y composicion) tal cual supone que valen lo mismo, y 4d ya había medido que no: el largo discrimina en todo el rango y la composición sólo arriba de unos 100 residuos. Así que al peso de la composición lo elegimos midiendo, sobre 89 transcriptos que traen anotada su región codificante. En cada uno sabemos cuál de todos sus ORFs es el verdadero, y eso permite contar aciertos y errores.
+
+```
+  peso   tasa aciertos   mejor ORF   falsos positivos   CDS detectado
+  0,00       1,000           98%           29%               98%
+  0,20       1,000           98%           21%               97%
+  0,40       0,999           94%           24%               96%
+  0,60       0,998           91%           35%               91%
+  0,80       0,993           89%           43%               91%
+  1,00       0,988           89%           46%               91%
+```
+
+La tasa de aciertos (la métrica de 4d, cuántas veces el CDS real le gana a otro ORF del mismo transcripto) no se mueve: queda entre 0,988 y 1,000 en toda la grilla. Está saturada porque en casi todos los transcriptos el CDS real ya es el ORF más largo, así que esa pregunta la contesta el largo solo. La de falsos positivos, en cambio, cuenta en cuántos transcriptos hay un ORF que no es el CDS y aun así es mayor que 0,5, y esa sí se mueve, con un mínimo en 0,15.
+
+Ese es el valor que quedó. Ajustando sobre una mitad de los transcriptos y midiendo en la otra, el peso elegido le gana a 1,00 en las 5 particiones que probamos, y las cinco eligen entre 0,10 y 0,15.
+
+Con ese peso, 22 de los 4.424 ORFs que no son el CDS pasan 0,5, un 0,5%, repartidos en 17 de los 89 transcriptos. Son 0,2 falsos positivos por transcripto. Y si en lugar del umbral se lee sólo el ORF mejor puntuado, ése es el CDS anotado en el 98% de los casos.
+
+### Corrida sobre un gen real
+
+Se corrió sobre `NM_001317077.2`, un mRNA humano de 1.941 nt bajado de NCBI en formato GenBank, que trae anotada la región codificante y sirve para comparar la predicción con un dato real.
+
+```
+  (ii) 43 ORFs across the six reading frames:
+   frame  ORFs  longest   start     end
+      +1     5       95     972    1260
+      +2     7      202     295     904
+      +3     7       57     818     992
+      -1     8      138     198     615
+      -2     9       82     674     923
+      -3     7      119     688    1048
+
+  (iv) Most likely to be coding:
+   frame   start     end  length  log-odds   P(cod)
+      +2     295     904     202       3.1    0.958
+      -1     198     615     138      -1.8    0.140
+      -3     688    1048     119      -2.0    0.117
+      +1     972    1260      95      -3.4    0.032
+```
+
+Los seis marcos tienen ORFs y ninguno queda vacío, así que el problema no es encontrar ORFs sino elegir entre 43. El ORF más probable es el de 295 a 904, que es exactamente la región codificante anotada. El segundo candidato está a 4,9 unidades de log-odds de distancia, y ninguno de los otros 42 llega a 0,5, así que el detector hace una sola afirmación sobre esta secuencia y es la correcta.
+
+### Controles
+
+El control positivo son tres proteínas reales de una medusa, una planta y una arqueobacteria. Se las convierte en el ADN que las codifica y se las hace pasar por el mismo circuito. Las tres dan 1,000. Ninguna es de los organismos con los que se armó la referencia, por la misma razón por la que en 4d dejamos un organismo afuera.
+
+El control negativo es ADN al azar. Con la semilla fija que quedó en el código da 19 ORFs, el más largo de 64 residuos, con probabilidad 0,014. Como una sola corrida no alcanza para concluir nada, lo repetimos con 200 semillas distintas: en ninguna aparece un ORF por encima de 0,5.
+
+El tercero lo armamos para exponer una limitación puntual. Se toman las mismas tres proteínas y se les mezclan los residuos, dejando el largo y la composición intactos y destruyendo sólo el orden. Una proteína mezclada no es una proteína, así que debería puntuar bajo, sin embargo (y obviamente) las dos señales terminan dando exactamente lo mismo que para la original:
+
+```
+  organism                                    length         real    scrambled
+  Jellyfish - GFP (P42212)                       237    11.948409    11.948409
+  Plant - Arabidopsis thaliana                   280    15.825781    15.825781
+  Archaeon - Methanocaldococcus jannaschii       225    13.000362    13.000362
+```
+
+La tabla muestra las dos señales solas, sin el descuento por cantidad de candidatos. Ese descuento sí las separa un poco, pero por un motivo que no tiene que ver con la mezcla: el ADN mezclado contiene otra cantidad de ORFs, así que le toca otro descuento.
+
+### Qué se podría mejorar
+
+**Una señal que lea el orden**, como la frecuencia de pares de aminoácidos consecutivos o el uso de codones. Es lo que le falta al detector según el control de mezcla.
+
+**Más transcriptos anotados.** Las dos referencias se aprenden de 16,8 millones de residuos, muy por encima de los 30.000 que en 4b alcanzaban, pero el peso de la composición se apoya en 89 transcriptos y ahí sí se nota.
+
+**Medir el prior** en lugar de dejarlo en 0,5.
+
+**Bajar el 19% restante.** El descuento por cantidad de candidatos deja 17 de 89 transcriptos con algún falso positivo, y esos no se explican por haber mirado muchos ORFs. Habría que ver qué tienen en común.
+
+Quedan además dos cosas del método que conviene aclarar. Las probabilidades se siguen saturando en los ORFs largos: el CDS del gen de ejemplo da 0,958, pero las tres proteínas del control positivo dan 1,000, así que a partir de cierto punto el número deja de distinguir entre un candidato bueno y uno mejor. Y las dos señales no son independientes como el método supone, porque el peso de composición es una suma sobre residuos y crece con el largo igual que la señal de largo.

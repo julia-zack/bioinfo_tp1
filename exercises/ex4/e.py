@@ -54,6 +54,8 @@ import math
 import random
 import statistics
 
+from Bio import SeqIO
+
 from sequences import (
     AA,
     CODON_TABLE,
@@ -63,7 +65,7 @@ from sequences import (
     stop_codon_probability,
 )
 from stats import freqs
-from ncbi import fetch_genbank_record, get_real_sequences
+from ncbi import fetch_cds_annotations, fetch_genbank_record, get_real_sequences
 from exercises.ex4.a import REAL_ORGANISMS
 
 # How likely an ORF is to be coding before any evidence is in. 0.5 is neutral
@@ -76,6 +78,15 @@ DEMO_ACCESSION = "NM_001317077.2"
 
 # Fixes the random DNA of the negative control, so the run is reproducible.
 NEGATIVE_CONTROL_SEED = 0
+
+# Transcripts with an annotated coding region, used to weigh the two signals
+# against each other by measuring instead of guessing.
+TRANSCRIPT_SET = "data/ncbi_sample.fasta"
+
+# Composition weights tried when fitting. 4d found the length to be the main
+# signal and the composition a secondary one, so the search stays at or below 1,
+# which is where the two would count the same.
+WEIGHT_GRID = [round(0.05 * i, 2) for i in range(21)]
 
 FRAME_ORDER = ['+1', '+2', '+3', '-1', '-2', '-3']
 
@@ -99,6 +110,17 @@ def lognormal_density(x, mu, sigma):
            math.exp(-((math.log(x) - mu) ** 2) / (2 * sigma ** 2))
 
 
+def candidate_discount(orf_count):
+    """How much to take off every ORF for having examined orf_count of them.
+
+    Six frames over a sequence yield dozens of ORFs, and each one is a separate
+    chance for a run of non-stop codons to come out long by luck. Scoring one
+    candidate as if it had been the only one looked at overstates it by roughly
+    the number of tries, which in log-odds is a subtraction of log(orf_count).
+    """
+    return math.log(orf_count) if orf_count else 0.0
+
+
 def geometric_density(k, q):
     """P(a random ORF is exactly k codons long): k-1 non-stops, then a stop."""
     return (1 - q) ** (k - 1) * q
@@ -119,12 +141,14 @@ class CodingScorer:
     Between them they turn any ORF into a probability that it codes.
     """
 
-    def __init__(self, length_mu, length_sigma, stop_prob, aa_weight, prior):
+    def __init__(self, length_mu, length_sigma, stop_prob, aa_weight, prior,
+                 comp_weight=1.0):
         self.length_mu = length_mu         # mean of ln(length) of real proteins
         self.length_sigma = length_sigma   # standard deviation of ln(length)
         self.stop_prob = stop_prob         # q = P(codon is a stop)
         self.aa_weight = aa_weight         # {amino acid: log(f_natural/f_random)}
         self.log_prior_odds = math.log(prior / (1 - prior))
+        self.comp_weight = comp_weight     # how much the composition counts
 
     def length_log_odds(self, length):
         """(signal 1) log( P(length|coding) / P(length|chance) )."""
@@ -139,7 +163,7 @@ class CodingScorer:
     def coding_log_odds(self, orf):
         """(iv) Both signals plus the prior."""
         return (self.length_log_odds(orf['length'])
-                + self.composition_log_odds(orf['protein'])
+                + self.comp_weight * self.composition_log_odds(orf['protein'])
                 + self.log_prior_odds)
 
     def probability(self, orf):
@@ -191,7 +215,7 @@ def amino_acid_weights(real_seqs):
     return {aa: math.log(f_natural[aa] / f_random[aa]) for aa in AA}
 
 
-def train_scorer(real_seqs, prior=PRIOR_CODING):
+def train_scorer(real_seqs, prior=PRIOR_CODING, comp_weight=1.0):
     """Fit both references and return a detector ready to score ORFs."""
     log_lengths = [math.log(length) for length in coding_lengths(real_seqs)]
     length_mu = statistics.mean(log_lengths)
@@ -202,6 +226,7 @@ def train_scorer(real_seqs, prior=PRIOR_CODING):
         stop_prob=stop_codon_probability(),
         aa_weight=amino_acid_weights(real_seqs),
         prior=prior,
+        comp_weight=comp_weight,
     )
 
 
@@ -231,9 +256,11 @@ def score_sequence(dna, scorer):
     probability.
     """
     orfs = find_orfs(dna)
+    discount = candidate_discount(len(orfs))
     for orf in orfs:
-        orf['composition'] = freqs(orf['protein'])        # (iii-b)
-        orf['probability'] = scorer.probability(orf)      # (iv)
+        orf['composition'] = freqs(orf['protein'])                      # (iii-b)
+        orf['log_odds'] = scorer.coding_log_odds(orf) - discount        # (iv)
+        orf['probability'] = sigmoid(orf['log_odds'])                   # (iv)
     orfs.sort(key=lambda orf: orf['probability'], reverse=True)
     return orfs
 
@@ -285,13 +312,161 @@ def print_orf_table(orfs, top=8):
     print(f"  {'frame':>6} {'start':>7} {'end':>7} {'length':>7} {'log-odds':>9} {'P(cod)':>8}")
     for orf in orfs[:top]:
         print(f"  {orf['frame']:>6} {orf['start']:>7} {orf['end']:>7} "
-              f"{orf['length']:>7} {scorer_log_odds(orf):>9.1f} {orf['probability']:>8.3f}")
+              f"{orf['length']:>7} {orf['log_odds']:>9.1f} {orf['probability']:>8.3f}")
 
 
-def scorer_log_odds(orf):
-    """Recover the log-odds from the probability, for display."""
-    p = min(max(orf['probability'], 1e-12), 1 - 1e-12)
-    return math.log(p / (1 - p))
+# ===========================================================================
+# Weighing the two signals against each other
+# ===========================================================================
+
+def labelled_signals(scorer):
+    """The two signals of every ORF of every annotated transcript.
+
+    One list per transcript, holding for each of its ORFs the length signal
+    already carrying the candidate discount, the composition signal, and whether
+    that ORF is the annotated coding region. The signals are kept apart so a
+    weight can be tried without scoring again. The discount is the same for every
+    ORF of a transcript, so it changes the threshold measures and leaves the
+    ranking ones alone.
+    """
+    records = list(SeqIO.parse(TRANSCRIPT_SET, "fasta"))
+    annotations = fetch_cds_annotations([record.id for record in records])
+
+    transcripts = []
+    for record in records:
+        cds = annotations.get(record.id)
+        if cds is None:
+            continue
+        found = find_orfs(str(record.seq))
+        discount = candidate_discount(len(found))
+        orfs = [(scorer.length_log_odds(orf['length']) - discount,
+                 scorer.composition_log_odds(orf['protein']),
+                 [orf['start'], orf['end']] == cds)
+                for orf in found]
+        transcripts.append(orfs)
+    return transcripts
+
+
+def hit_rate(transcripts, comp_weight):
+    """How often the real coding region beats another ORF of its own transcript.
+
+    0.5 is what picking at random would give and 1.0 is a perfect separation,
+    the same measure 4d uses. It answers "which of these ORFs is the CDS".
+    """
+    wins = comparisons = 0
+    for orfs in transcripts:
+        real = [(length, comp) for length, comp, is_cds in orfs if is_cds]
+        if not real:
+            continue
+        real_score = real[0][0] + comp_weight * real[0][1]
+        for length, comp, is_cds in orfs:
+            if is_cds:
+                continue
+            comparisons += 1
+            if real_score > length + comp_weight * comp:
+                wins += 1
+    return wins / comparisons if comparisons else 0.0
+
+
+def false_positive_rate(transcripts, comp_weight):
+    """Fraction of transcripts holding a false positive.
+
+    A different question from the hit rate: not "which ORF is the CDS" but "is
+    this ORF a CDS at all". Every ORF over 0.5 that is not the annotated one is
+    a coding region the detector claims and is not there. Counted per transcript
+    rather than per ORF, because that is how the detector gets used: one
+    sequence in, and every false positive comes out next to the right answer.
+    """
+    called = sum(1 for orfs in transcripts
+                 if any(sigmoid(length + comp_weight * comp) > 0.5
+                        for length, comp, is_cds in orfs if not is_cds))
+    return called / len(transcripts) if transcripts else 0.0
+
+
+def found_rate(transcripts, comp_weight):
+    """Fraction of transcripts whose real coding region scores over 0.5."""
+    found = sum(1 for orfs in transcripts
+                if any(sigmoid(length + comp_weight * comp) > 0.5
+                       for length, comp, is_cds in orfs if is_cds))
+    return found / len(transcripts) if transcripts else 0.0
+
+
+def top_orf_rate(transcripts, comp_weight):
+    """Fraction of transcripts whose best scoring ORF is the annotated CDS.
+
+    What the detector gets right when only its top answer is read, rather than
+    every ORF that clears the threshold.
+    """
+    best = sum(1 for orfs in transcripts
+               if max(orfs, key=lambda o: o[0] + comp_weight * o[1])[2])
+    return best / len(transcripts) if transcripts else 0.0
+
+
+def fit_composition_weight(transcripts, grid=WEIGHT_GRID):
+    """The weight with the fewest false positives on these transcripts.
+
+    The hit rate cannot pick a weight, because it sits at 1.000 across the whole
+    grid: in almost every transcript the real CDS is already the longest ORF, so
+    the length alone answers that question. The false positive rate does move,
+    so it is what the weight is fitted on.
+    """
+    return min(grid, key=lambda weight: false_positive_rate(transcripts, weight))
+
+
+def check_weight_holds(transcripts, splits=5):
+    """Split the transcripts in two, several times over, and see whether a weight
+    fitted on one half still beats 1.0 on the other.
+
+    Fitting and checking on the same 89 transcripts would flatter the result, so
+    this repeats the exercise on halves that took no part in each other's fit.
+    Returns how many splits held up, and the weights they picked.
+    """
+    held = 0
+    picked = []
+    for seed in range(splits):
+        rows = list(transcripts)
+        random.Random(seed).shuffle(rows)
+        half = len(rows) // 2
+        chosen, held_out = rows[:half], rows[half:]
+        weight = fit_composition_weight(chosen)
+        picked.append(weight)
+        if false_positive_rate(held_out, weight) < false_positive_rate(held_out, 1.0):
+            held += 1
+    return held, splits, picked
+
+
+def print_composition_weight(scorer):
+    """(iv) How much the composition counts next to the length, by measuring.
+
+    The weight is fitted on all the annotated transcripts, and the repeated
+    split is reported next to it as a check on whether the result survives being
+    fitted and measured on different transcripts.
+    """
+    transcripts = labelled_signals(scorer)
+    weight = fit_composition_weight(transcripts)
+
+    print("\nHow much should the composition count next to the length?")
+    print(f"  Measured on {len(transcripts)} transcripts with an annotated CDS.")
+    print(f"  {'weight':>8} {'hit rate':>10} {'top ORF':>9}"
+          f" {'false pos':>11} {'CDS found':>11}")
+    for candidate in (0.0, 0.2, 0.4, 0.6, 0.8, 1.0):
+        mark = "  <-" if candidate == weight else ""
+        print(f"  {candidate:>8.2f} {hit_rate(transcripts, candidate):>10.3f}"
+              f" {top_orf_rate(transcripts, candidate):>9.0%}"
+              f" {false_positive_rate(transcripts, candidate):>10.0%}"
+              f" {found_rate(transcripts, candidate):>11.0%}{mark}")
+
+    held, splits, picked = check_weight_holds(transcripts)
+    print(f"\n  Fitted weight: {weight:.2f}")
+    print(f"  Splitting the transcripts in two and fitting on one half beats"
+          f" weight 1.00\n  on the other half in {held} of {splits} splits,"
+          f" picking {', '.join(f'{w:.2f}' for w in picked)}.")
+    print("  The pick moves around, so the value is loose, but staying under 1.00")
+    print("  holds up.")
+    print("\n  The hit rate does not move, so the length alone already says which")
+    print("  ORF is the CDS. What the weight changes is how often the detector")
+    print("  calls an ORF that is not one, and no weight brings that near zero.")
+    return weight
 
 
 # ===========================================================================
@@ -342,11 +517,15 @@ def positive_controls(scorer):
     Each real protein goes back to DNA and through the detector. A high P across
     all three shows it reaches beyond the proteomes it was trained on.
     """
-    print("\n(v-a) POSITIVE control (organisms outside the training set):")
-    print(f"  {'organism':<42} {'length':>7} {'P(cod)':>8}")
+    print("\n(v-a) POSITIVE control: real genes from a jellyfish, a plant and an")
+    print("      archaeon, none of them in the training set.")
+    print("      Expected: a high P on all three. A low one would mean the")
+    print("      detector only knows the proteomes it was trained on.")
+    print(f"  {'organism':<42} {'length':>7} {'log-odds':>12} {'P(cod)':>8}")
     for name, protein in FOREIGN_CONTROLS.items():
         orf = score_sequence(coding_dna_from_protein(protein), scorer)[0]
-        print(f"  {name:<42} {orf['length']:>7} {orf['probability']:>8.3f}")
+        print(f"  {name:<42} {orf['length']:>7} "
+              f"{orf['log_odds']:>12.6f} {orf['probability']:>8.3f}")
 
 
 def negative_control(length, scorer, seed=NEGATIVE_CONTROL_SEED):
@@ -361,8 +540,49 @@ def negative_control(length, scorer, seed=NEGATIVE_CONTROL_SEED):
         random.seed(seed)
     dna = generate_random_nt_sequence(length)
     label = f"seed {seed}" if seed is not None else "unseeded"
-    print(f"\n(v-b) NEGATIVE control: {length} nt of random DNA ({label})")
+    print(f"\n(v-b) NEGATIVE control: {length} nt of random DNA ({label}).")
+    print("      Expected: short ORFs only, all with a low P.")
     print_orf_table(score_sequence(dna, scorer), top=3)
+
+
+def scramble(protein, shuffler):
+    """Reorder a protein's residues, keeping the leading M in place.
+
+    Same length and same composition as the original, only the arrangement of
+    the residues changes.
+    """
+    residues = list(protein[1:])
+    shuffler.shuffle(residues)
+    return protein[0] + "".join(residues)
+
+
+def scrambled_control(scorer, seed=NEGATIVE_CONTROL_SEED):
+    """(v-c) A negative control that comes back positive, on purpose.
+
+    A protein with its residues shuffled is not a protein, so it should score
+    low. It does not: the two signals come out identical to the real protein's,
+    digit for digit. Neither can see the difference, because the length does not
+    change under a reordering and the composition log-odds is a sum over
+    residues, which does not depend on the order they are added in.
+
+    The two signals are shown on their own here, without the candidate discount.
+    That discount depends on how many ORFs the DNA happens to contain, which the
+    shuffling changes, and it would hide the point rather than make it.
+    """
+    shuffler = random.Random(seed)
+    print("\n(v-c) SCRAMBLED control: the same three proteins with their residues")
+    print("      shuffled, so the length and the composition are untouched and")
+    print("      only the order is destroyed.")
+    print("      Expected: a low score, since a scrambled protein is not a protein.")
+    print("      What happens: the two signals give the same number for both.")
+    print(f"  {'organism':<42} {'length':>7} {'real':>12} {'scrambled':>12}")
+    for name, protein in FOREIGN_CONTROLS.items():
+        scrambled = scramble(protein, shuffler)
+        real = {'length': len(protein), 'protein': protein}
+        mixed = {'length': len(scrambled), 'protein': scrambled}
+        print(f"  {name:<42} {len(protein):>7} "
+              f"{scorer.coding_log_odds(real):>12.6f}"
+              f" {scorer.coding_log_odds(mixed):>12.6f}")
 
 
 def annotated_cds(record):
@@ -410,13 +630,22 @@ def run(source=DEMO_ACCESSION):
     scorer = train_scorer(real_seqs)
     describe_scorer(scorer)
 
+    # (iv) the composition should count less than the length, but by how much is
+    # measured against annotated transcripts
+    scorer = train_scorer(real_seqs, comp_weight=print_composition_weight(scorer))
+
     # (v) the three tests the exercise asks for
     positive_controls(scorer)
     negative_control(900, scorer)
+    scrambled_control(scorer)
     real_gene(source, scorer)
 
     print("\nPossible improvements (v, last question):")
-    print("  - use a real codon usage to back-translate the positive control;")
-    print("  - model the length per organism (prokaryote vs eukaryote) instead of one fit;")
-    print("  - calibrate the probability against annotated CDS instead of assuming a prior;")
-    print("  - add signals: codon usage, longest ORF per frame, Kozak sequence.")
+    print("  - add a signal that reads the order of the residues, such as the")
+    print("    frequency of consecutive pairs or the codon usage, since (v-c)")
+    print("    shows both current signals are blind to it;")
+    print("  - fit the composition weight on more than 89 transcripts. The two")
+    print("    references are learnt from 16.8M residues, far past what 4b showed")
+    print("    is enough, while the weight rests on 89;")
+    print("  - measure the prior instead of leaving it at 0.5;")
+    print("  - model the length per organism rather than fitting all three together.")
